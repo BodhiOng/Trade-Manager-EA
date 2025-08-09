@@ -13,129 +13,6 @@
 #include <stderror.mqh>
 #include <WinUser32.mqh>
 
-// // Define constants for error handling if not already defined
-// #ifndef MODE_STOPLEVEL
-// #define MODE_STOPLEVEL 6
-// #endif
-
-// #ifndef ERR_INVALID_STOPS
-// #define ERR_INVALID_STOPS 130
-// #endif
-
-// // Define constants for initialization
-// #define INIT_SUCCEEDED 0
-// #define INIT_FAILED 1
-
-// // Define constants for chart events
-// #ifndef CHARTEVENT_OBJECT_CLICK
-// #define CHARTEVENT_OBJECT_CLICK 1
-// #endif
-
-// #ifndef CHARTEVENT_OBJECT_ENDEDIT
-// #define CHARTEVENT_OBJECT_ENDEDIT 2
-// #endif
-
-// // Define object property constants if not already defined
-// #ifndef OBJPROP_TEXT
-// #define OBJPROP_TEXT 302
-// #endif
-
-// #ifndef OBJPROP_COLOR
-// #define OBJPROP_COLOR 6
-// #endif
-
-// #ifndef OBJPROP_BGCOLOR
-// #define OBJPROP_BGCOLOR 63
-// #endif
-
-// #ifndef OBJPROP_BORDER_COLOR
-// #define OBJPROP_BORDER_COLOR 8
-// #endif
-
-// #ifndef OBJPROP_BORDER_TYPE
-// #define OBJPROP_BORDER_TYPE 65
-// #endif
-
-// #ifndef BORDER_FLAT
-// #define BORDER_FLAT 0
-// #endif
-
-// #ifndef OBJPROP_CORNER
-// #define OBJPROP_CORNER 6
-// #endif
-
-// #ifndef OBJPROP_XDISTANCE
-// #define OBJPROP_XDISTANCE 10
-// #endif
-
-// #ifndef OBJPROP_YDISTANCE
-// #define OBJPROP_YDISTANCE 11
-// #endif
-
-// #ifndef OBJPROP_XSIZE
-// #define OBJPROP_XSIZE 5
-// #endif
-
-// #ifndef OBJPROP_YSIZE
-// #define OBJPROP_YSIZE 6
-// #endif
-
-// #ifndef OBJPROP_STYLE
-// #define OBJPROP_STYLE 7
-// #endif
-
-// #ifndef STYLE_SOLID
-// #define STYLE_SOLID 0
-// #endif
-
-// #ifndef OBJPROP_WIDTH
-// #define OBJPROP_WIDTH 9
-// #endif
-
-// #ifndef OBJPROP_BACK
-// #define OBJPROP_BACK 0
-// #endif
-
-// #ifndef OBJPROP_ZORDER
-// #define OBJPROP_ZORDER 114
-// #endif
-
-// #ifndef OBJPROP_HIDDEN
-// #define OBJPROP_HIDDEN 115
-// #endif
-
-// #ifndef OBJPROP_SELECTABLE
-// #define OBJPROP_SELECTABLE 91
-// #endif
-
-// #ifndef OBJPROP_SELECTED
-// #define OBJPROP_SELECTED 92
-// #endif
-
-// #ifndef OBJPROP_READONLY
-// #define OBJPROP_READONLY 371
-// #endif
-
-// #ifndef OBJPROP_ALIGN
-// #define OBJPROP_ALIGN 44
-// #endif
-
-// #ifndef ALIGN_RIGHT
-// #define ALIGN_RIGHT 2
-// #endif
-
-// #ifndef OBJ_EDIT
-// #define OBJ_EDIT 7
-// #endif
-
-// #ifndef OBJ_BUTTON
-// #define OBJ_BUTTON 1
-// #endif
-
-// #ifndef OBJ_LABEL
-// #define OBJ_LABEL 7
-// #endif
-
 // Define constants for UI elements
 #define BUTTON_BUY      1
 #define BUTTON_SELL     2
@@ -154,12 +31,6 @@
 #define TM_X "TM_X"
 #define TM_P "TM_P"
 #define TM_CA "TM_CA"
-#define TM_CB "TM_CB"
-#define TM_CS "TM_CS"
-#define TM_SLLabel "SLLabel"
-#define TM_CSLLabel "CSLLabel"
-#define TM_BEPLabel "BEPLabel"
-#define TM_TSLabel "TSLabel"
 #define TM_CB "TM_CB"
 #define TM_CS "TM_CS"
 #define TM_SLLabel "SLLabel"
@@ -192,68 +63,6 @@ string g_CSLEdit = "CSLEdit";
 string g_BEPEdit = "BEPEdit";
 string g_TSEdit = "TSEdit";
 
-// // MQL4 Object Properties
-// #ifndef OBJPROP_TEXT
-// #define OBJPROP_TEXT 0
-// #endif
-// #ifndef OBJPROP_COLOR
-// #define OBJPROP_COLOR 6
-// #endif
-// #ifndef OBJPROP_BGCOLOR
-// #define OBJPROP_BGCOLOR 63
-// #endif
-// #ifndef OBJPROP_BORDER_COLOR
-// #define OBJPROP_BORDER_COLOR 8
-// #endif
-// #ifndef OBJPROP_CORNER
-// #define OBJPROP_CORNER 0
-// #endif
-// #ifndef OBJPROP_XDISTANCE
-// #define OBJPROP_XDISTANCE 1
-// #endif
-// #ifndef OBJPROP_YDISTANCE
-// #define OBJPROP_YDISTANCE 2
-// #endif
-// #ifndef OBJPROP_FONTSIZE
-// #define OBJPROP_FONTSIZE 12
-// #endif
-// #ifndef OBJPROP_READONLY
-// #define OBJPROP_READONLY 3
-// #endif
-// #ifndef OBJPROP_BACK
-// #define OBJPROP_BACK 0
-// #endif
-// #ifndef OBJPROP_ZORDER
-// #define OBJPROP_ZORDER 0
-// #endif
-// #ifndef OBJPROP_HIDDEN
-// #define OBJPROP_HIDDEN 0
-// #endif
-// #ifndef OBJPROP_SELECTABLE
-// #define OBJPROP_SELECTABLE 0
-// #endif
-// #ifndef OBJPROP_SELECTED
-// #define OBJPROP_SELECTED 0
-// #endif
-// #ifndef OBJPROP_ALIGN
-// #define OBJPROP_ALIGN 0
-// #endif
-// #ifndef OBJPROP_TIMEFRAMES
-// #define OBJPROP_TIMEFRAMES 0
-// #endif
-// #ifndef OBJPROP_XSIZE
-// #define OBJPROP_XSIZE 5
-// #endif
-// #ifndef OBJPROP_YSIZE
-// #define OBJPROP_YSIZE 6
-// #endif
-// #ifndef OBJPROP_STATE
-// #define OBJPROP_STATE 0
-// #endif
-// #ifndef OBJPROP_BORDER_TYPE
-// #define OBJPROP_BORDER_TYPE 42
-// #endif
-
 // UI Element Text
 #define B "BUY"
 #define S "SELL"
@@ -269,7 +78,6 @@ string g_TSEdit = "TSEdit";
 
 // Input parameters
 input string EA_Settings = "===== EA Settings ====="; // EA Settings
-input string EA_Name = "TradeManager"; // EA Name
 input int Panel_Corner = 0; // Panel Corner
 input int Panel_X = 20; // Panel X Position
 input int Panel_Y = 20; // Panel Y Position
@@ -348,6 +156,12 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
       else if(sparam == g_X) // Close button
       {
          CloseAllPositions();
+      }
+      else if(sparam == g_P) // Partial close button (previously %)
+      {
+         // Partial close positions at 50%
+         PartialClosePositions();
+         UpdateButtonColors();
       }
       else if(sparam == g_CA) // Close all button
       {
@@ -442,15 +256,19 @@ void CreateTradePanel()
     {
         string suffix = IntegerToString(i+1);
         
-        // Lot Size
-        CreateLabel("TM_LotSizeLabel"+suffix, "Lot size", x + 10, y + 5, Text_Color);
+        // Lot Size (label removed)
         CreateEdit(g_LotSizeEdit+suffix, DoubleToString(g_LotSize, 2), x + 10, y + 25, Field_Width, Field_Height);
         
-        // Trade action buttons
-        CreateButton("TM_B"+suffix, "B", x + Field_Width + 20, y + 25, Button_Width, Button_Height, Button_Color);
-        CreateButton("TM_S"+suffix, "S", x + Field_Width + Button_Width + 30, y + 25, Button_Width, Button_Height, clrCrimson);
-        CreateButton("TM_X"+suffix, "X", x + Field_Width + 2 * (Button_Width + 10), y + 25, Button_Width, Button_Height, Button_Color);
-        CreateButton("TM_%"+suffix, "%", x + Field_Width + 3 * (Button_Width + 10), y + 25, Button_Width, Button_Height, Button_Color);
+        // Trade action buttons (reduced width)
+        int smallerWidth = Button_Width / 2; // Reduce button width by 1/2
+        int buttonGap = 5; // Equal gap between buttons
+        int startX = x + Field_Width + 20;
+        
+        // Create buttons with equal width and equal spacing, each with a distinct color
+        CreateButton("TM_B"+suffix, "B", startX, y + 25, smallerWidth, Button_Height, clrDodgerBlue);      // Blue for Buy
+        CreateButton("TM_S"+suffix, "S", startX + smallerWidth + buttonGap, y + 25, smallerWidth, Button_Height, clrCrimson);      // Red for Sell
+        CreateButton("TM_X"+suffix, "X", startX + 2 * (smallerWidth + buttonGap), y + 25, smallerWidth, Button_Height, clrDarkOrange);   // Orange for Close
+        CreateButton("TM_P"+suffix, "P", startX + 3 * (smallerWidth + buttonGap), y + 25, smallerWidth, Button_Height, clrMediumSeaGreen); // Green for Partial
         
         y += Field_Height + 30;
     }
@@ -698,10 +516,6 @@ void PartialClosePositions()
         CloseSellPositions(closePercent);
     }
 }
-
-//+------------------------------------------------------------------+
-//| Update button colors based on selected state                     |
-//+------------------------------------------------------------------+
 
 //+------------------------------------------------------------------+
 //| Create the complete UI                                           |
