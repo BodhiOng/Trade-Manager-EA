@@ -99,7 +99,7 @@ double g_BreakEven = 0.0;
 double g_TrailingStop = 0.0;
 
 // Arrays to store multiple lot sizes
-double g_LotSizes[4] = {0.01, 0.01, 0.01, 0.01};
+double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
 
 // Global variables for button states
     bool g_BuySelected = true;
@@ -110,6 +110,11 @@ double g_LotSizes[4] = {0.01, 0.01, 0.01, 0.01};
 //+------------------------------------------------------------------+
     int OnInit()
     {
+   // Initialize lot sizes with starting values
+        for(int i = 0; i < 5; i++) {
+            g_LotSizes[i] = 0.01;
+        }
+        
    // Create UI elements
         CreateTradePanel();
         return(INIT_SUCCEEDED);
@@ -140,24 +145,42 @@ double g_LotSizes[4] = {0.01, 0.01, 0.01, 0.01};
    // Handle UI events
         if(id == CHARTEVENT_OBJECT_CLICK)
         {
-      // Handle button clicks
-            if(sparam == g_B) // Buy button
-            {
-                double lotSize = StringToDouble(ObjectGetString(0, g_LotSizeEdit, OBJPROP_TEXT));
+      // Handle button clicks for each row
+            // Check if the button is one of our row buttons (B1-B5, S1-S5, X1-X5, P1-P5)
+            string buttonPrefix = StringSubstr(sparam, 0, 4); // Get first 4 chars (TM_B, TM_S, etc)
+            string rowSuffix = "";
+            
+            if(StringLen(sparam) > 4) {
+                rowSuffix = StringSubstr(sparam, 4, StringLen(sparam) - 4); // Get row number suffix
+            }
+            
+            int rowIndex = -1;
+            if(StringLen(rowSuffix) > 0) {
+                int rowNum = (int)StringToInteger(rowSuffix);
+                if(rowNum > 0) {
+                    rowIndex = rowNum - 1; // Convert to zero-based index
+                }
+            }
+            
+            // Handle Buy buttons (B1-B5)
+            if(StringSubstr(sparam, 0, 4) == "TM_B" && rowIndex >= 0 && rowIndex < 5) {
+                string lotEditName = "TM_LotEdit" + IntegerToString(rowIndex + 1);
+                double lotSize = StringToDouble(ObjectGetString(0, lotEditName, OBJPROP_TEXT));
                 OpenBuyOrder(lotSize);
             }
-            else if(sparam == g_S) // Sell button
-            {
-                double lotSize = StringToDouble(ObjectGetString(0, g_LotSizeEdit, OBJPROP_TEXT));
+            // Handle Sell buttons (S1-S5)
+            else if(StringSubstr(sparam, 0, 4) == "TM_S" && rowIndex >= 0 && rowIndex < 5) {
+                string lotEditName = "TM_LotEdit" + IntegerToString(rowIndex + 1);
+                double lotSize = StringToDouble(ObjectGetString(0, lotEditName, OBJPROP_TEXT));
                 OpenSellOrder(lotSize);
             }
-            else if(sparam == g_X) // Close button
-            {
+            // Handle Close buttons (X1-X5)
+            else if(StringSubstr(sparam, 0, 4) == "TM_X" && rowIndex >= 0 && rowIndex < 5) {
                 CloseAllPositions();
             }
-            else if(sparam == g_P) // Partial close button(previously % )
-            {
-         // Partial close positions at 50%
+            // Handle Partial close buttons (P1-P5)
+            else if(StringSubstr(sparam, 0, 4) == "TM_P" && rowIndex >= 0 && rowIndex < 5) {
+                // Partial close positions at 50%
                 PartialClosePositions();
             }
             else if(sparam == g_CA) // Close all button
@@ -176,11 +199,29 @@ double g_LotSizes[4] = {0.01, 0.01, 0.01, 0.01};
         else if(id == CHARTEVENT_OBJECT_ENDEDIT)
         {
       // Handle edit controls
-            if(sparam == g_LotSizeEdit)
+            // Check if the edit control is one of our lot size edits (TM_LotEdit1-TM_LotEdit5)
+            if(StringSubstr(sparam, 0, 10) == "TM_LotEdit")
             {
-                g_LotSize = StringToDouble(ObjectGetString(0, g_LotSizeEdit, OBJPROP_TEXT));
-                if(g_LotSize < 0.01) g_LotSize = 0.01;
-                ObjectSetString(0, g_LotSizeEdit, OBJPROP_TEXT, DoubleToString(g_LotSize, 2));
+                string rowSuffix = StringSubstr(sparam, 10, StringLen(sparam) - 10);
+                int rowIndex = -1;
+                if(StringLen(rowSuffix) > 0) {
+                    int rowNum = (int)StringToInteger(rowSuffix);
+                    if(rowNum > 0) {
+                        rowIndex = rowNum - 1; // Convert to zero-based index
+                    }
+                }
+                
+                if(rowIndex >= 0 && rowIndex < 5) {
+                    // Update the lot size for this row
+                    double lotSize = StringToDouble(ObjectGetString(0, sparam, OBJPROP_TEXT));
+                    if(lotSize < 0.01) lotSize = 0.01;
+                    
+                    // Store the lot size in the global array
+                    g_LotSizes[rowIndex] = lotSize;
+                    
+                    // Update the text in the edit control
+                    ObjectSetString(0, sparam, OBJPROP_TEXT, DoubleToString(lotSize, 2));
+                }
             }
             else if(sparam == g_SLEdit)
             {
@@ -199,7 +240,7 @@ double g_LotSizes[4] = {0.01, 0.01, 0.01, 0.01};
         // Create panel background
         string panelName = "TM_Panel";
         int panelWidth = 225;
-        int panelHeight = 180;
+        int panelHeight = 300;
 
         ObjectCreate(0, panelName, OBJ_RECTANGLE_LABEL, 0, 0, 0);
         ObjectSetInteger(0, panelName, OBJPROP_CORNER, Panel_Corner);
@@ -226,21 +267,30 @@ double g_LotSizes[4] = {0.01, 0.01, 0.01, 0.01};
         CreateLabel("TM_Title", EA_Name, x + 5, y + 10, Text_Color, 12, "Arial Bold");
         y += 10;
 
-    // Lot Size
-        CreateEdit(g_LotSizeEdit, DoubleToString(g_LotSize, 2), x + 10, y + 25, Field_Width, Field_Height);
-    
     // Trade action buttons (reduced width)
         int smallerWidth = Button_Width / 3; // Reduce button width by 1 / 3
         int buttonGap = 5; // Equal gap between buttons
         int startX = x + Field_Width + 20;
+        int rowSpacing = Field_Height + 10; // Spacing between rows
     
-    // Create buttons with equal width and equal spacing, each with a distinct color
-        CreateButton("TM_B", "B", startX, y + 25, smallerWidth, Button_Height, clrDodgerBlue);
-        CreateButton("TM_S", "S", startX + smallerWidth + buttonGap, y + 25, smallerWidth, Button_Height, clrCrimson);
-        CreateButton("TM_X", "X", startX + 2 * (smallerWidth + buttonGap), y + 25, smallerWidth, Button_Height, clrBrown);
-        CreateButton("TM_P", "P", startX + 3 * (smallerWidth + buttonGap), y + 25, smallerWidth, Button_Height, clrIndigo);
-    
-        y += Field_Height + 30;
+    // Create 5 rows of lot size inputs and trade action buttons
+        for(int row = 0; row < 5; row++)
+        {
+            string rowSuffix = IntegerToString(row + 1);
+            int rowY = y + 25 + (row * rowSpacing);
+            
+            // Lot Size for this row
+            string lotEditName = "TM_LotEdit" + rowSuffix;
+            CreateEdit(lotEditName, DoubleToString(g_LotSizes[row], 2), x + 10, rowY, Field_Width, Field_Height);
+            
+            // Create buttons with equal width and equal spacing, each with a distinct color
+            CreateButton("TM_B" + rowSuffix, "B", startX, rowY, smallerWidth, Button_Height, clrDodgerBlue);
+            CreateButton("TM_S" + rowSuffix, "S", startX + smallerWidth + buttonGap, rowY, smallerWidth, Button_Height, clrCrimson);
+            CreateButton("TM_X" + rowSuffix, "X", startX + 2 * (smallerWidth + buttonGap), rowY, smallerWidth, Button_Height, clrBrown);
+            CreateButton("TM_P" + rowSuffix, "P", startX + 3 * (smallerWidth + buttonGap), rowY, smallerWidth, Button_Height, clrIndigo);
+        }
+        
+        y += (5 * rowSpacing) + 20; // Adjust y position after all rows
 
     // Special action buttons
         CreateButton("TM_CA", "CA", x + 10, y, Field_Width, Button_Height, clrBlack);
@@ -248,24 +298,24 @@ double g_LotSizes[4] = {0.01, 0.01, 0.01, 0.01};
         CreateButton("TM_CS", "CS", x + 2 * Field_Width + 30, y, Field_Width, Button_Height, clrFireBrick);
         y += Button_Height + 10;
 
-    // Stop Loss
-        CreateLabel("TM_SLLabel", "Stop loss:", x + 10, y, Text_Color);
-        CreateEdit(g_SLEdit, "0.0", x + 120, y, Field_Width / 2, Field_Height);
+    // Stop Loss (pips from entry)
+        CreateLabel("TM_SLLabel", "Stop loss (pips):", x + 10, y, Text_Color);
+        CreateEdit(g_SLEdit, "0.0", x + 150, y, Field_Width / 2, Field_Height);
         y += Field_Height;
 
-    // Combined Stop Loss
-        CreateLabel("TM_CSLLabel", "Combined stop loss:", x + 10, y, Text_Color);
-        CreateEdit(g_CSLEdit, "0.0", x + 120, y, Field_Width / 2, Field_Height);
+    // Combined Stop Loss (price level)
+        CreateLabel("TM_CSLLabel", "Combined SL (price):", x + 10, y, Text_Color);
+        CreateEdit(g_CSLEdit, "0.0", x + 150, y, Field_Width / 2, Field_Height);
         y += Field_Height;
 
     // Break-Even Point
-        CreateLabel("TM_BEPLabel", "Break even point:", x + 10, y, Text_Color);
-        CreateEdit(g_BEPEdit, "0.0", x + 120, y, Field_Width / 2, Field_Height);
+        CreateLabel("TM_BEPLabel", "Break-even (pips):", x + 10, y, Text_Color);
+        CreateLabel(g_BEPEdit, DoubleToString(g_BreakEven, 1), x + 120, y, Text_Color);
         y += Field_Height;
 
     // Trailing Stop
-        CreateLabel("TM_TSLabel", "Trailing stop:", x + 10, y, Text_Color);
-        CreateEdit(g_TSEdit, "0.0", x + 120, y, Field_Width / 2, Field_Height);
+        CreateLabel("TM_TSLabel", "Trailing stop (pips):", x + 10, y, Text_Color);
+        CreateLabel(g_TSEdit, DoubleToString(g_TrailingStop, 1), x + 120, y, Text_Color);
     }
 
 //+------------------------------------------------------------------+
@@ -539,8 +589,6 @@ double g_LotSizes[4] = {0.01, 0.01, 0.01, 0.01};
         buttonY += Button_Height + 5;
         CreateButton(g_CB, "CB", buttonX1, buttonY, Button_Width, Button_Height, clrOrange, BUTTON_CLOSE_BUY);
         CreateButton(g_CS, "CS", buttonX2, buttonY, Button_Width, Button_Height, clrOrange, BUTTON_CLOSE_SELL);
-    
-    // Button color management removed
     }
 
 //+------------------------------------------------------------------+
