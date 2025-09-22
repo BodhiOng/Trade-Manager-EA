@@ -22,10 +22,8 @@
 #define BUTTON_CLOSE_BUY 6
 #define BUTTON_CLOSE_SELL 7
 
-// Define chart event constants if not already defined
-#ifndef CHART_EVENT_CHART_CHANGE
-#define CHART_EVENT_CHART_CHANGE 12
-#endif
+// Using built-in MQL4 chart event constants:
+// CHARTEVENT_CHART_CHANGE, CHARTEVENT_OBJECT_CLICK, CHARTEVENT_OBJECT_ENDEDIT
 
 // UI Element Names
 #define EA_Name "Trade Manager"
@@ -120,8 +118,11 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
             g_LotSizes[i] = 0.01;
         }
         
-        // Enable chart events to detect chart resize
-        ChartSetInteger(0, CHART_EVENT_CHART_CHANGE, true); // CHART_EVENT_CHART_CHANGE = 12
+        // Enable chart events for button clicks and other interactions
+        ChartSetInteger(0, CHART_EVENT_MOUSE_MOVE, true);     // Enable chart events
+        ChartSetInteger(0, CHART_EVENT_OBJECT_CREATE, true);  // Enable object creation events
+        
+        Print("Trade Manager EA initialized - chart events enabled");
         
         // Create UI elements
         CreateTradePanel();
@@ -150,67 +151,89 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
 //+------------------------------------------------------------------+
     void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
     {
+        // Debug print to see what events are being received
+        Print("Chart event received: ID=", id, ", sparam=", sparam);
+        
         // Handle chart resize event
-        if(id == CHARTEVENT_CHART_CHANGE)
-        {
-            // Recreate the panel with new dimensions
+        if(id == CHARTEVENT_CHART_CHANGE) {
+            // Recreate the panel when chart is resized
+            Print("Chart resized - recreating panel");
             ObjectsDeleteAll(0, "TM_");
             CreateTradePanel();
             return;
         }
+
+        // Handle button clicks
+        if(id == CHARTEVENT_CLICK) {
+            Print("Chart clicked");
+        }
         
-        // Handle UI events
-        if(id == CHARTEVENT_OBJECT_CLICK)
-        {
-            // Handle button clicks for each row
-            // Check if the button is one of our row buttons (B1-B5, S1-S5, X1-X5, P1-P5)
-            string buttonPrefix = StringSubstr(sparam, 0, 4); // Get first 4 chars (TM_B, TM_S, etc)
-            string rowSuffix = "";
+        // Handle object clicks (buttons)
+        if(id == CHARTEVENT_OBJECT_CLICK) {
+            string clickedObject = sparam;
             
-            if(StringLen(sparam) > 4) {
-                rowSuffix = StringSubstr(sparam, 4, StringLen(sparam) - 4); // Get row number suffix
-            }
-            
-            int rowIndex = -1;
-            if(StringLen(rowSuffix) > 0) {
-                int rowNum = (int)StringToInteger(rowSuffix);
-                if(rowNum > 0) {
-                    rowIndex = rowNum - 1; // Convert to zero-based index
+            // Check if a button was clicked
+            if(StringSubstr(clickedObject, 0, 3) == "TM_") {
+                // Handle row-specific buttons (B1, S1, X1, P1, etc.)
+                if(StringLen(clickedObject) > 4) {
+                    string buttonType = StringSubstr(clickedObject, 3, 1); // B, S, X, or P
+                    string rowStr = StringSubstr(clickedObject, 4, 1);    // Row number as string
+                    int rowIndex = (int)StringToInteger(rowStr) - 1;      // Convert to 0-based index
+                    
+                    // Get the hardcoded lot size for this row
+                    double lotSize = 0.0;
+                    if(rowIndex == 0) lotSize = 0.02;
+                    else if(rowIndex == 1) lotSize = 0.04;
+                    else if(rowIndex == 2) lotSize = 0.06;
+                    else if(rowIndex == 3) lotSize = 0.08;
+                    else if(rowIndex == 4) lotSize = 0.10;
+                    
+                    // Execute the appropriate action based on button type
+                    if(buttonType == "B") {
+                        // Buy button clicked - use the hardcoded lot size
+                        int ticket = OrderSend(Symbol(), OP_BUY, lotSize, Ask, 3, 0, 0, "Buy Order", 0, 0, Button_Color);
+                        if(ticket > 0) {
+                            Print("Buy order executed with lot size: ", lotSize, ", ticket: ", ticket);
+                        } else {
+                            Print("Buy order failed. Error: ", GetLastError());
+                        }
+                    }
+                    else if(buttonType == "S") {
+                        // Sell button clicked - use the hardcoded lot size
+                        int ticket = OrderSend(Symbol(), OP_SELL, lotSize, Bid, 3, 0, 0, "Sell Order", 0, 0, clrRed);
+                        if(ticket > 0) {
+                            Print("Sell order executed with lot size: ", lotSize, ", ticket: ", ticket);
+                        } else {
+                            Print("Sell order failed. Error: ", GetLastError());
+                        }
+                    }
+                    else if(buttonType == "X") {
+                        // Close only orders with this specific lot size
+                        CloseOrdersByLotSize(lotSize);
+                        Print("Closed orders with lot size: ", lotSize);
+                    }
+                    else if(buttonType == "P") {
+                        // Partial close (50%) of positions with this specific lot size
+                        PartialCloseByLotSize(lotSize, 50.0);
+                        Print("Partially closed (50%) positions with lot size: ", lotSize);
+                    }
                 }
-            }
-            
-            // Handle Buy buttons (B1-B5)
-            if(StringSubstr(sparam, 0, 4) == "TM_B" && rowIndex >= 0 && rowIndex < 5) {
-                string lotEditName = "TM_LotEdit" + IntegerToString(rowIndex + 1);
-                double lotSize = StringToDouble(ObjectGetString(0, lotEditName, OBJPROP_TEXT));
-                OpenBuyOrder(lotSize);
-            }
-            // Handle Sell buttons (S1-S5)
-            else if(StringSubstr(sparam, 0, 4) == "TM_S" && rowIndex >= 0 && rowIndex < 5) {
-                string lotEditName = "TM_LotEdit" + IntegerToString(rowIndex + 1);
-                double lotSize = StringToDouble(ObjectGetString(0, lotEditName, OBJPROP_TEXT));
-                OpenSellOrder(lotSize);
-            }
-            // Handle Close buttons (X1-X5)
-            else if(StringSubstr(sparam, 0, 4) == "TM_X" && rowIndex >= 0 && rowIndex < 5) {
-                CloseAllPositions();
-            }
-            // Handle Partial close buttons (P1-P5)
-            else if(StringSubstr(sparam, 0, 4) == "TM_P" && rowIndex >= 0 && rowIndex < 5) {
-                // Partial close positions at 50%
-                PartialClosePositions();
-            }
-            else if(sparam == g_CA) // Close all button
-            {
-                CloseAllPositions();
-            }
-            else if(sparam == g_CB) // Close buy button
-            {
-                CloseBuyPositions(100);
-            }
-            else if(sparam == g_CS) // Close sell button
-            {
-                CloseSellPositions(100);
+                // Handle special action buttons
+                else if(clickedObject == "TM_CA") {
+                    // Close all orders (both buy and sell)
+                    CloseAllPositions();
+                    Print("CA: Closed all positions");
+                }
+                else if(clickedObject == "TM_CB") {
+                    // Close only buy orders
+                    CloseBuyPositions(100);
+                    Print("CB: Closed all buy positions");
+                }
+                else if(clickedObject == "TM_CS") {
+                    // Close only sell orders
+                    CloseSellPositions(100);
+                    Print("CS: Closed all sell positions");
+                }
             }
         }
         else if(id == CHARTEVENT_OBJECT_ENDEDIT)
@@ -239,12 +262,6 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
                     // Update the text in the edit control
                     ObjectSetString(0, sparam, OBJPROP_TEXT, DoubleToString(lotSize, 2));
                 }
-            }
-            else if(sparam == g_SLEdit)
-            {
-                g_StopLoss = StringToDouble(ObjectGetString(0, g_SLEdit, OBJPROP_TEXT));
-                if(g_StopLoss < 0) g_StopLoss = 0;
-                ObjectSetString(0, g_SLEdit, OBJPROP_TEXT, DoubleToString(g_StopLoss, 1));
             }
         }
     }
@@ -364,7 +381,18 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
 //+------------------------------------------------------------------+
     void CreateButton(string name, string text, int x, int y, int width, int height, color clr, int fontSize = 10, int id = 0)
     {
-        ObjectCreate(0, name, OBJ_BUTTON, 0, 0, 0);
+        // Delete button if it already exists
+        if(ObjectFind(0, name) >= 0) {
+            ObjectDelete(0, name);
+        }
+        
+        // Create the button
+        if(!ObjectCreate(0, name, OBJ_BUTTON, 0, 0, 0)) {
+            Print("Failed to create button: ", name, ". Error: ", GetLastError());
+            return;
+        }
+        
+        // Set button properties
         ObjectSetInteger(0, name, OBJPROP_CORNER, Panel_Corner);
         ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
         ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
@@ -374,18 +402,20 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         ObjectSetInteger(0, name, OBJPROP_BORDER_COLOR, (int)clrBlack);
         ObjectSetInteger(0, name, OBJPROP_BORDER_TYPE, BORDER_FLAT);
         ObjectSetInteger(0, name, OBJPROP_WIDTH, 1);
-        ObjectSetInteger(0, name, OBJPROP_CORNER, Panel_Corner);
         ObjectSetInteger(0, name, OBJPROP_STYLE, STYLE_SOLID);
         ObjectSetInteger(0, name, OBJPROP_BACK, false);
         ObjectSetInteger(0, name, OBJPROP_STATE, false);
         ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
         ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
-        ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+        ObjectSetInteger(0, name, OBJPROP_HIDDEN, false); // Changed to false to make buttons visible and clickable
         ObjectSetInteger(0, name, OBJPROP_ZORDER, 0);
         ObjectSetString(0, name, OBJPROP_TEXT, text);
         ObjectSetString(0, name, OBJPROP_FONT, "Arial Bold");
         ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fontSize);
         ObjectSetInteger(0, name, OBJPROP_COLOR, (int)clrWhite);
+        
+        // Debug print
+        Print("Button created: ", name, " at position ", x, ",", y);
     }
 
 //+------------------------------------------------------------------+
@@ -418,13 +448,24 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
 //+------------------------------------------------------------------+
     void CreateLabel(string name, string text, int x, int y, color clr, int fontSize = 10, string font = "Arial")
     {
+        // Delete label if it already exists
+        if(ObjectFind(0, name) >= 0) {
+            ObjectDelete(0, name);
+        }
+        
         // Get chart dimensions for adaptive font sizing if not specified
         if(fontSize == 10) { // Default value, use adaptive sizing
             int chartHeight = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS);
             fontSize = MathMax(8, MathMin(14, (int)(chartHeight * 0.015))); // 1.5% of chart height
         }
         
-        ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
+        // Create the label
+        if(!ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0)) {
+            Print("Failed to create label: ", name, ". Error: ", GetLastError());
+            return;
+        }
+        
+        // Set label properties
         ObjectSetInteger(0, name, OBJPROP_CORNER, Panel_Corner);
         ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
         ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
@@ -433,7 +474,7 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         ObjectSetString(0, name, OBJPROP_FONT, font);
         ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fontSize);
         ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+        ObjectSetInteger(0, name, OBJPROP_HIDDEN, false); // Changed to false to make labels visible
     }
 
 //+------------------------------------------------------------------+
@@ -441,11 +482,22 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
 //+------------------------------------------------------------------+
     void CreateEdit(string name, string text, int x, int y, int width, int height)
     {
+        // Delete edit control if it already exists
+        if(ObjectFind(0, name) >= 0) {
+            ObjectDelete(0, name);
+        }
+        
         // Calculate adaptive font size based on edit control height
         int chartHeight = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS);
         int fontSize = MathMax(8, MathMin(12, (int)(height * 0.6)));
         
-        ObjectCreate(0, name, OBJ_EDIT, 0, 0, 0);
+        // Create the edit control
+        if(!ObjectCreate(0, name, OBJ_EDIT, 0, 0, 0)) {
+            Print("Failed to create edit control: ", name, ". Error: ", GetLastError());
+            return;
+        }
+        
+        // Set edit control properties
         ObjectSetInteger(0, name, OBJPROP_CORNER, Panel_Corner);
         ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
         ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
@@ -455,12 +507,11 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         ObjectSetInteger(0, name, OBJPROP_BORDER_COLOR, (int)clrBlack);
         ObjectSetInteger(0, name, OBJPROP_BORDER_TYPE, BORDER_FLAT);
         ObjectSetInteger(0, name, OBJPROP_WIDTH, 1);
-        ObjectSetInteger(0, name, OBJPROP_CORNER, Panel_Corner);
         ObjectSetInteger(0, name, OBJPROP_STYLE, STYLE_SOLID);
         ObjectSetInteger(0, name, OBJPROP_BACK, false);
         ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
         ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
-        ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+        ObjectSetInteger(0, name, OBJPROP_HIDDEN, false); // Changed to false to make edit controls visible
         ObjectSetInteger(0, name, OBJPROP_ZORDER, 0);
         ObjectSetString(0, name, OBJPROP_TEXT, text);
         ObjectSetString(0, name, OBJPROP_FONT, "Arial");
@@ -521,8 +572,35 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
 //+------------------------------------------------------------------+
     void CloseAllPositions()
     {
-        CloseBuyPositions(100);
-        CloseSellPositions(100);
+        int totalClosed = 0;
+        
+        // First close all buy positions
+        for(int i = OrdersTotal() - 1; i >= 0; i--)
+        {
+            if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            {
+                if(OrderSymbol() == Symbol() && OrderType() == OP_BUY)
+                {
+                    bool result = OrderClose(OrderTicket(), OrderLots(), Bid, 3, clrBlue);
+                    if(result) totalClosed++;
+                }
+            }
+        }
+        
+        // Then close all sell positions
+        for(int i = OrdersTotal() - 1; i >= 0; i--)
+        {
+            if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            {
+                if(OrderSymbol() == Symbol() && OrderType() == OP_SELL)
+                {
+                    bool result = OrderClose(OrderTicket(), OrderLots(), Ask, 3, clrRed);
+                    if(result) totalClosed++;
+                }
+            }
+        }
+        
+        Print("CloseAllPositions: Closed ", totalClosed, " positions");
     }
 
 //+------------------------------------------------------------------+
@@ -622,6 +700,9 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
 //+------------------------------------------------------------------+
     void CloseBuyPositions(double percent)
     {
+        int totalClosed = 0;
+        double totalLots = 0.0;
+        
         for(int i = OrdersTotal() - 1; i >= 0; i--)
         {
             if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
@@ -629,15 +710,35 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
                 if(OrderSymbol() == Symbol() && OrderType() == OP_BUY)
                 {
                     double lotToClose = OrderLots();
+                    
+                    // If partial close
                     if(percent < 100)
-                    lotToClose = NormalizeDouble(OrderLots() * percent / 100.0, 2);
+                    {
+                        lotToClose = NormalizeDouble(OrderLots() * percent / 100.0, 2);
+                        
+                        // Check minimum lot size
+                        double minLot = MarketInfo(Symbol(), MODE_MINLOT);
+                        if(lotToClose < minLot)
+                            lotToClose = minLot;
+                            
+                        // Check if remaining lot would be less than minimum
+                        if(OrderLots() - lotToClose < minLot)
+                            lotToClose = OrderLots();
+                    }
                 
                     bool result = OrderClose(OrderTicket(), lotToClose, Bid, 3, clrBlue);
-                    if(!result)
-                    Print("OrderClose error: ", GetLastError());
+                    if(result) {
+                        totalClosed++;
+                        totalLots += lotToClose;
+                    } else {
+                        Print("CB: Failed to close Buy order #", OrderTicket(), ". Error: ", GetLastError());
+                    }
                 }
             }
         }
+        
+        if(totalClosed > 0)
+            Print("CB: Closed ", totalClosed, " buy positions totaling ", DoubleToString(totalLots, 2), " lots");
     }
 
 //+------------------------------------------------------------------+
@@ -645,6 +746,9 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
 //+------------------------------------------------------------------+
     void CloseSellPositions(double percent)
     {
+        int totalClosed = 0;
+        double totalLots = 0.0;
+        
         for(int i = OrdersTotal() - 1; i >= 0; i--)
         {
             if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
@@ -653,24 +757,120 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
                 {
                     double lotToClose = OrderLots();
                 
-                // If partial close
+                    // If partial close
                     if(percent < 100)
                     {
                         lotToClose = NormalizeDouble(OrderLots() * percent / 100, 2);
                     
-                    // Check minimum lot size
+                        // Check minimum lot size
                         double minLot = MarketInfo(Symbol(), MODE_MINLOT);
                         if(lotToClose < minLot)
-                        lotToClose = minLot;
+                            lotToClose = minLot;
                         
-                    // Check if remaining lot would be less than minimum
+                        // Check if remaining lot would be less than minimum
                         if(OrderLots() - lotToClose < minLot)
-                        lotToClose = OrderLots();
+                            lotToClose = OrderLots();
                     }
                 
                     bool result = OrderClose(OrderTicket(), lotToClose, Ask, 3, clrRed);
-                    if(!result)
-                    Print("OrderClose error: ", GetLastError());
+                    if(result) {
+                        totalClosed++;
+                        totalLots += lotToClose;
+                    } else {
+                        Print("CS: Failed to close Sell order #", OrderTicket(), ". Error: ", GetLastError());
+                    }
+                }
+            }
+        }
+        
+        if(totalClosed > 0)
+            Print("CS: Closed ", totalClosed, " sell positions totaling ", DoubleToString(totalLots, 2), " lots");
+    }
+    
+//+------------------------------------------------------------------+
+//| Close orders with specific lot size                              |
+//+------------------------------------------------------------------+
+    void CloseOrdersByLotSize(double targetLotSize)
+    {
+        // Use a small epsilon for floating point comparison
+        double epsilon = 0.001;
+        
+        for(int i = OrdersTotal() - 1; i >= 0; i--)
+        {
+            if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))  
+            {
+                if(OrderSymbol() == Symbol())
+                {
+                    // Check if this order has the target lot size (with epsilon tolerance)
+                    if(MathAbs(OrderLots() - targetLotSize) < epsilon)
+                    {
+                        if(OrderType() == OP_BUY)
+                        {
+                            bool result = OrderClose(OrderTicket(), OrderLots(), Bid, 3, clrBlue);
+                            if(!result)
+                                Print("Failed to close Buy order with lot size ", targetLotSize, ". Error: ", GetLastError());
+                            else
+                                Print("Closed Buy order #", OrderTicket(), " with lot size ", OrderLots());
+                        }
+                        else if(OrderType() == OP_SELL)
+                        {
+                            bool result = OrderClose(OrderTicket(), OrderLots(), Ask, 3, clrRed);
+                            if(!result)
+                                Print("Failed to close Sell order with lot size ", targetLotSize, ". Error: ", GetLastError());
+                            else
+                                Print("Closed Sell order #", OrderTicket(), " with lot size ", OrderLots());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+//+------------------------------------------------------------------+
+//| Partially close orders with specific lot size                     |
+//+------------------------------------------------------------------+
+    void PartialCloseByLotSize(double targetLotSize, double percent)
+    {
+        // Use a small epsilon for floating point comparison
+        double epsilon = 0.001;
+        
+        for(int i = OrdersTotal() - 1; i >= 0; i--)
+        {
+            if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            {
+                if(OrderSymbol() == Symbol())
+                {
+                    // Check if this order has the target lot size (with epsilon tolerance)
+                    if(MathAbs(OrderLots() - targetLotSize) < epsilon)
+                    {
+                        double lotToClose = NormalizeDouble(OrderLots() * percent / 100.0, 2);
+                        double minLot = MarketInfo(Symbol(), MODE_MINLOT);
+                        
+                        // Check minimum lot size
+                        if(lotToClose < minLot) 
+                            lotToClose = minLot;
+                            
+                        // Check if remaining lot would be less than minimum
+                        if(OrderLots() - lotToClose < minLot)
+                            lotToClose = OrderLots(); // Close the entire position
+                        
+                        if(OrderType() == OP_BUY)
+                        {
+                            bool result = OrderClose(OrderTicket(), lotToClose, Bid, 3, clrBlue);
+                            if(!result)
+                                Print("Failed to partially close Buy order with lot size ", targetLotSize, ". Error: ", GetLastError());
+                            else
+                                Print("Partially closed Buy order #", OrderTicket(), ", closed ", lotToClose, " lots out of ", OrderLots());
+                        }
+                        else if(OrderType() == OP_SELL)
+                        {
+                            bool result = OrderClose(OrderTicket(), lotToClose, Ask, 3, clrRed);
+                            if(!result)
+                                Print("Failed to partially close Sell order with lot size ", targetLotSize, ". Error: ", GetLastError());
+                            else
+                                Print("Partially closed Sell order #", OrderTicket(), ", closed ", lotToClose, " lots out of ", OrderLots());
+                        }
+                    }
                 }
             }
         }
