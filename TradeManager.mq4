@@ -139,11 +139,91 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
     }
 
 //+------------------------------------------------------------------+
+//| Direct button action function that can be called manually         |
+//+------------------------------------------------------------------+
+    void ProcessButtonAction(string buttonName)
+    {
+        Print("Manual button action: ", buttonName);
+        
+        if(buttonName == "TM_CA") {
+            Print("Processing CA button action");
+            CloseAllPositions();
+        }
+        else if(buttonName == "TM_CB") {
+            Print("Processing CB button action");
+            CloseBuyPositions(100);
+        }
+        else if(buttonName == "TM_CS") {
+            Print("Processing CS button action");
+            CloseSellPositions(100);
+        }
+    }
+    
+//+------------------------------------------------------------------+
+//| Direct button click functions that can be called from the chart   |
+//+------------------------------------------------------------------+
+    // These functions can be called directly from the chart
+    void CloseAllButton() { ProcessButtonAction("TM_CA"); }
+    void CloseBuyButton() { ProcessButtonAction("TM_CB"); }
+    void CloseSellButton() { ProcessButtonAction("TM_CS"); }
+
+//+------------------------------------------------------------------+
 //| Expert tick function                                             |
 //+------------------------------------------------------------------+
     void OnTick()
     {
-   // Update UI if needed
+        // Check if CA, CB, CS buttons exist and are clickable
+        static int tickCount = 0;
+        
+        // Every 10 ticks, check the buttons (more frequent checking)
+        if(tickCount % 10 == 0) {
+            // Check CA button
+            if(ObjectFind(0, "TM_CA") >= 0) {
+                // Make sure it's not hidden
+                ObjectSetInteger(0, "TM_CA", OBJPROP_HIDDEN, false);
+                ObjectSetInteger(0, "TM_CA", OBJPROP_SELECTABLE, true);
+                
+                // Check if button is pressed
+                if(ObjectGetInteger(0, "TM_CA", OBJPROP_STATE)) {
+                    // Reset button state
+                    ObjectSetInteger(0, "TM_CA", OBJPROP_STATE, false);
+                    // Execute action
+                    ProcessButtonAction("TM_CA");
+                }
+            }
+            
+            // Check CB button
+            if(ObjectFind(0, "TM_CB") >= 0) {
+                // Make sure it's not hidden
+                ObjectSetInteger(0, "TM_CB", OBJPROP_HIDDEN, false);
+                ObjectSetInteger(0, "TM_CB", OBJPROP_SELECTABLE, true);
+                
+                // Check if button is pressed
+                if(ObjectGetInteger(0, "TM_CB", OBJPROP_STATE)) {
+                    // Reset button state
+                    ObjectSetInteger(0, "TM_CB", OBJPROP_STATE, false);
+                    // Execute action
+                    ProcessButtonAction("TM_CB");
+                }
+            }
+            
+            // Check CS button
+            if(ObjectFind(0, "TM_CS") >= 0) {
+                // Make sure it's not hidden
+                ObjectSetInteger(0, "TM_CS", OBJPROP_HIDDEN, false);
+                ObjectSetInteger(0, "TM_CS", OBJPROP_SELECTABLE, true);
+                
+                // Check if button is pressed
+                if(ObjectGetInteger(0, "TM_CS", OBJPROP_STATE)) {
+                    // Reset button state
+                    ObjectSetInteger(0, "TM_CS", OBJPROP_STATE, false);
+                    // Execute action
+                    ProcessButtonAction("TM_CS");
+                }
+            }
+        }
+        
+        tickCount++;
     }
 
 //+------------------------------------------------------------------+
@@ -151,25 +231,21 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
 //+------------------------------------------------------------------+
     void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
     {
-        // Debug print to see what events are being received
-        Print("Chart event received: ID=", id, ", sparam=", sparam);
+        // Always print the event for debugging
+        Print("Chart event: ID=", id, ", object=", sparam);
         
-        // Handle chart resize event
-        if(id == CHARTEVENT_CHART_CHANGE) {
-            // Recreate the panel when chart is resized
-            Print("Chart resized - recreating panel");
-            ObjectsDeleteAll(0, "TM_");
-            CreateTradePanel();
-            return;
-        }
-
-        // Handle button clicks
-        if(id == CHARTEVENT_CLICK) {
-            Print("Chart clicked");
-        }
+        // No keyboard shortcuts - removed due to MQL4 limitations
         
-        // Handle object clicks (buttons)
+        // Handle button clicks - this is the main event we care about
         if(id == CHARTEVENT_OBJECT_CLICK) {
+            // Direct handling of special buttons
+            if(sparam == "TM_CA" || sparam == "TM_CB" || sparam == "TM_CS") {
+                Print("Special button clicked: ", sparam);
+                ProcessButtonAction(sparam);
+                return;
+            }
+            
+            // Handle row-specific buttons
             string clickedObject = sparam;
             
             // Check if a button was clicked
@@ -219,20 +295,20 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
                     }
                 }
                 // Handle special action buttons
-                else if(clickedObject == "TM_CA") {
+                else if(StringCompare(clickedObject, "TM_CA") == 0) {
                     // Close all orders (both buy and sell)
+                    Print("CA button clicked - closing all positions");
                     CloseAllPositions();
-                    Print("CA: Closed all positions");
                 }
-                else if(clickedObject == "TM_CB") {
+                else if(StringCompare(clickedObject, "TM_CB") == 0) {
                     // Close only buy orders
+                    Print("CB button clicked - closing all buy positions");
                     CloseBuyPositions(100);
-                    Print("CB: Closed all buy positions");
                 }
-                else if(clickedObject == "TM_CS") {
+                else if(StringCompare(clickedObject, "TM_CS") == 0) {
                     // Close only sell orders
+                    Print("CS button clicked - closing all sell positions");
                     CloseSellPositions(100);
-                    Print("CS: Closed all sell positions");
                 }
             }
         }
@@ -298,8 +374,8 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         int y = Panel_Y;
     
     // Title with proper positioning and spacing - white text
-        CreateLabel("TM_Title", EA_Name, x + 10, y + 10, clrWhite, 10, "Arial Bold");
-        y += 80; // Significant spacing after title to prevent any overlap
+        CreateLabel("TM_Title", EA_Name, x + 10, y + 10, clrWhite, 12, "Arial Bold");
+        y += 60; // Significant spacing after title to prevent any overlap
 
     // Trade action buttons (reduced width)
         int smallerWidth = adaptiveButtonWidth / 3; // Reduce button width by 1/3
@@ -337,14 +413,31 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         }
         
         // Adjust y position after all rows with moderate spacing
-        y += (5 * rowSpacing) + (int)(panelHeight * 0.01);
+        y += (5 * rowSpacing) + (int)(panelHeight * 0.01) - 10;
 
-    // Special action buttons - compact positioning and sizing
-        int specialButtonSpacing = (int)(panelWidth * 0.02);
-        int adaptiveFontSize = 8; // Fixed smaller font size
-        CreateButton("TM_CA", "CA", x + (int)(panelWidth * 0.03), y, adaptiveFieldWidth, adaptiveButtonHeight, clrGreen, adaptiveFontSize);
-        CreateButton("TM_CB", "CB", x + adaptiveFieldWidth + specialButtonSpacing, y, adaptiveFieldWidth, adaptiveButtonHeight, clrMidnightBlue, adaptiveFontSize);
-        CreateButton("TM_CS", "CS", x + 2 * adaptiveFieldWidth + 2 * specialButtonSpacing, y, adaptiveFieldWidth, adaptiveButtonHeight, clrFireBrick, adaptiveFontSize);
+    // Special action buttons - larger and more prominent
+        int specialButtonSpacing = 10; // Fixed spacing
+        int specialButtonWidth = adaptiveFieldWidth; // Make them wider
+        int specialButtonHeight = adaptiveButtonHeight; // Make them taller
+        int specialFontSize = 10; // Larger font size
+                
+        // Close All button (CA) - larger and more prominent
+        string caName = "TM_CA";
+        CreateButton(caName, "CA", x + 10, y, specialButtonWidth, specialButtonHeight, clrGreen, specialFontSize);
+        Print("Created CA button: ", caName);
+        
+        // Close Buy button (CB) - larger and more prominent
+        string cbName = "TM_CB";
+        CreateButton(cbName, "CB", x + 5 +specialButtonWidth + specialButtonSpacing, y, specialButtonWidth, specialButtonHeight, clrMidnightBlue, specialFontSize);
+        Print("Created CB button: ", cbName);
+        
+        // Close Sell button (CS) - larger and more prominent
+        string csName = "TM_CS";
+        CreateButton(csName, "CS", x + 2 * (specialButtonWidth + specialButtonSpacing), y, specialButtonWidth, specialButtonHeight, clrFireBrick, specialFontSize);
+        Print("Created CS button: ", csName);
+                
+        // Force chart redraw to make sure buttons appear
+        ChartRedraw(0);
         // Moderate spacing after special action buttons
         y += adaptiveButtonHeight + (int)(panelHeight * 0.03);
 
@@ -393,7 +486,6 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         }
         
         // Set button properties
-        ObjectSetInteger(0, name, OBJPROP_CORNER, Panel_Corner);
         ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
         ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
         ObjectSetInteger(0, name, OBJPROP_XSIZE, width);
@@ -402,20 +494,28 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         ObjectSetInteger(0, name, OBJPROP_BORDER_COLOR, (int)clrBlack);
         ObjectSetInteger(0, name, OBJPROP_BORDER_TYPE, BORDER_FLAT);
         ObjectSetInteger(0, name, OBJPROP_WIDTH, 1);
+        ObjectSetInteger(0, name, OBJPROP_CORNER, Panel_Corner);
         ObjectSetInteger(0, name, OBJPROP_STYLE, STYLE_SOLID);
         ObjectSetInteger(0, name, OBJPROP_BACK, false);
         ObjectSetInteger(0, name, OBJPROP_STATE, false);
-        ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+        
+        // Critical settings for clickability
+        ObjectSetInteger(0, name, OBJPROP_SELECTABLE, true);  // Make selectable
         ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
-        ObjectSetInteger(0, name, OBJPROP_HIDDEN, false); // Changed to false to make buttons visible and clickable
-        ObjectSetInteger(0, name, OBJPROP_ZORDER, 0);
+        ObjectSetInteger(0, name, OBJPROP_HIDDEN, false);     // Make visible
+        ObjectSetInteger(0, name, OBJPROP_ZORDER, 100);      // Bring to front
+        
+        // Text properties
         ObjectSetString(0, name, OBJPROP_TEXT, text);
         ObjectSetString(0, name, OBJPROP_FONT, "Arial Bold");
         ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fontSize);
         ObjectSetInteger(0, name, OBJPROP_COLOR, (int)clrWhite);
         
         // Debug print
-        Print("Button created: ", name, " at position ", x, ",", y);
+        Print("Button created: ", name, " at position ", x, ",", y, " - width: ", width, ", height: ", height);
+        
+        // Force chart redraw to make sure button appears
+        ChartRedraw(0);
     }
 
 //+------------------------------------------------------------------+
