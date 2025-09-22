@@ -22,6 +22,11 @@
 #define BUTTON_CLOSE_BUY 6
 #define BUTTON_CLOSE_SELL 7
 
+// Define chart event constants if not already defined
+#ifndef CHART_EVENT_CHART_CHANGE
+#define CHART_EVENT_CHART_CHANGE 12
+#endif
+
 // UI Element Names
 #define EA_Name "Trade Manager"
 #define TM_TITLE "Trade Manager"
@@ -110,12 +115,15 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
 //+------------------------------------------------------------------+
     int OnInit()
     {
-   // Initialize lot sizes with starting values
+        // Initialize lot sizes with starting values
         for(int i = 0; i < 5; i++) {
             g_LotSizes[i] = 0.01;
         }
         
-   // Create UI elements
+        // Enable chart events to detect chart resize
+        ChartSetInteger(0, CHART_EVENT_CHART_CHANGE, true); // CHART_EVENT_CHART_CHANGE = 12
+        
+        // Create UI elements
         CreateTradePanel();
         return(INIT_SUCCEEDED);
     }
@@ -142,10 +150,19 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
 //+------------------------------------------------------------------+
     void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
     {
-   // Handle UI events
+        // Handle chart resize event
+        if(id == CHARTEVENT_CHART_CHANGE)
+        {
+            // Recreate the panel with new dimensions
+            ObjectsDeleteAll(0, "TM_");
+            CreateTradePanel();
+            return;
+        }
+        
+        // Handle UI events
         if(id == CHARTEVENT_OBJECT_CLICK)
         {
-      // Handle button clicks for each row
+            // Handle button clicks for each row
             // Check if the button is one of our row buttons (B1-B5, S1-S5, X1-X5, P1-P5)
             string buttonPrefix = StringSubstr(sparam, 0, 4); // Get first 4 chars (TM_B, TM_S, etc)
             string rowSuffix = "";
@@ -198,7 +215,7 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         }
         else if(id == CHARTEVENT_OBJECT_ENDEDIT)
         {
-      // Handle edit controls
+            // Handle edit controls
             // Check if the edit control is one of our lot size edits (TM_LotEdit1-TM_LotEdit5)
             if(StringSubstr(sparam, 0, 10) == "TM_LotEdit")
             {
@@ -237,91 +254,115 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
 //+------------------------------------------------------------------+
     void CreateTradePanel()
     {
-        // Create panel background
+        // Get chart dimensions for adaptive sizing
+        int chartWidth = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
+        int chartHeight = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS);
+        
+        // Calculate panel size with appropriate minimum width to fit all elements
+        int panelWidth = MathMax(320, MathMin(450, (int)(chartWidth * 0.25)));
+        // Calculate panel height with sufficient height for all elements
+        int panelHeight = MathMax(500, MathMin(450, (int)(chartHeight * 0.95)));
+        
+        // No panel background - removed white panel
         string panelName = "TM_Panel";
-        int panelWidth = 225;
-        int panelHeight = 300;
+        
+        // We'll still define panel dimensions for positioning calculations
+        // but we won't create the actual panel object
 
-        ObjectCreate(0, panelName, OBJ_RECTANGLE_LABEL, 0, 0, 0);
-        ObjectSetInteger(0, panelName, OBJPROP_CORNER, Panel_Corner);
-        ObjectSetInteger(0, panelName, OBJPROP_XDISTANCE, Panel_X);
-        ObjectSetInteger(0, panelName, OBJPROP_YDISTANCE, Panel_Y);
-        ObjectSetInteger(0, panelName, OBJPROP_XSIZE, panelWidth);
-        ObjectSetInteger(0, panelName, OBJPROP_YSIZE, panelHeight);
-        ObjectSetInteger(0, panelName, OBJPROP_BGCOLOR, (int)Panel_Color);
-        ObjectSetInteger(0, panelName, OBJPROP_BORDER_TYPE, BORDER_FLAT);
-        ObjectSetInteger(0, panelName, OBJPROP_WIDTH, 1);
-        ObjectSetInteger(0, panelName, OBJPROP_CORNER, Panel_Corner);
-        ObjectSetInteger(0, panelName, OBJPROP_STYLE, STYLE_SOLID);
-        ObjectSetInteger(0, panelName, OBJPROP_BACK, false);
-        ObjectSetInteger(0, panelName, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(0, panelName, OBJPROP_SELECTED, false);
-        ObjectSetInteger(0, panelName, OBJPROP_HIDDEN, true);
-        ObjectSetInteger(0, panelName, OBJPROP_ZORDER, 0);
-
+    // Calculate button and field sizes with more appropriate proportions
+        int adaptiveButtonWidth = MathMax(Button_Width, (int)(panelWidth * 0.5));
+        int adaptiveFieldWidth = MathMax(Field_Width, (int)(panelWidth * 0.18));
+        // Set reasonable button and field heights
+        int adaptiveButtonHeight = MathMax(18, (int)(panelHeight * 0.08));
+        int adaptiveFieldHeight = MathMax(18, (int)(panelHeight * 0.08));
+        
     // Initialize position variables
         int x = Panel_X;
         int y = Panel_Y;
     
-    // Title
-        CreateLabel("TM_Title", EA_Name, x + 5, y + 10, Text_Color, 12, "Arial Bold");
-        y += 10;
+    // Title with proper positioning and spacing - white text
+        CreateLabel("TM_Title", EA_Name, x + 10, y + 10, clrWhite, 10, "Arial Bold");
+        y += 80; // Significant spacing after title to prevent any overlap
 
     // Trade action buttons (reduced width)
-        int smallerWidth = Button_Width / 3; // Reduce button width by 1 / 3
-        int buttonGap = 5; // Equal gap between buttons
-        int startX = x + Field_Width + 20;
-        int rowSpacing = Field_Height + 10; // Spacing between rows
+        int smallerWidth = adaptiveButtonWidth / 3; // Reduce button width by 1/3
+        int buttonGap = (int)(panelWidth * 0.02); // Adaptive gap between buttons (2% of panel width)
+        int startX = x + adaptiveFieldWidth + (int)(panelWidth * 0.05); // Adaptive starting position
+        // Adjust row spacing to be more compact
+        int rowSpacing = adaptiveFieldHeight + (int)(panelHeight * 0.04);
     
     // Create 5 rows of lot size inputs and trade action buttons
         for(int row = 0; row < 5; row++)
         {
             string rowSuffix = IntegerToString(row + 1);
-            int rowY = y + 25 + (row * rowSpacing);
+            // Position rows with clear separation from title
+            int rowY = y + (row * rowSpacing);
             
-            // Lot Size for this row
+            // Lot Size for this row with hardcoded values
             string lotEditName = "TM_LotEdit" + rowSuffix;
-            CreateEdit(lotEditName, DoubleToString(g_LotSizes[row], 2), x + 10, rowY, Field_Width, Field_Height);
+            // Hardcoded values: 0.02, 0.04, 0.06, 0.08, 0.1 from top to bottom
+            double hardcodedValue = 0.0;
+            if(row == 0) hardcodedValue = 0.02;
+            else if(row == 1) hardcodedValue = 0.04;
+            else if(row == 2) hardcodedValue = 0.06;
+            else if(row == 3) hardcodedValue = 0.08;
+            else if(row == 4) hardcodedValue = 0.10;
+            CreateEdit(lotEditName, DoubleToString(hardcodedValue, 2), x + (int)(panelWidth * 0.03), rowY, adaptiveFieldWidth, adaptiveFieldHeight);
             
             // Create buttons with equal width and equal spacing, each with a distinct color
-            CreateButton("TM_B" + rowSuffix, "B", startX, rowY, smallerWidth, Button_Height, clrDodgerBlue);
-            CreateButton("TM_S" + rowSuffix, "S", startX + smallerWidth + buttonGap, rowY, smallerWidth, Button_Height, clrCrimson);
-            CreateButton("TM_X" + rowSuffix, "X", startX + 2 * (smallerWidth + buttonGap), rowY, smallerWidth, Button_Height, clrBrown);
-            CreateButton("TM_P" + rowSuffix, "P", startX + 3 * (smallerWidth + buttonGap), rowY, smallerWidth, Button_Height, clrIndigo);
+            // Use smaller fixed font size for buttons
+            int adaptiveFontSize = 8; // Fixed smaller font size for buttons
+            
+            CreateButton("TM_B" + rowSuffix, "B", startX, rowY, smallerWidth, adaptiveButtonHeight, clrDodgerBlue, adaptiveFontSize);
+            CreateButton("TM_S" + rowSuffix, "S", startX + smallerWidth + buttonGap, rowY, smallerWidth, adaptiveButtonHeight, clrCrimson, adaptiveFontSize);
+            CreateButton("TM_X" + rowSuffix, "X", startX + 2 * (smallerWidth + buttonGap), rowY, smallerWidth, adaptiveButtonHeight, clrBrown, adaptiveFontSize);
+            CreateButton("TM_P" + rowSuffix, "P", startX + 3 * (smallerWidth + buttonGap), rowY, smallerWidth, adaptiveButtonHeight, clrIndigo, adaptiveFontSize);
         }
         
-        y += (5 * rowSpacing) + 20; // Adjust y position after all rows
+        // Adjust y position after all rows with moderate spacing
+        y += (5 * rowSpacing) + (int)(panelHeight * 0.01);
 
-    // Special action buttons
-        CreateButton("TM_CA", "CA", x + 10, y, Field_Width, Button_Height, clrBlack);
-        CreateButton("TM_CB", "CB", x + Field_Width + 20, y, Field_Width, Button_Height, clrMidnightBlue);
-        CreateButton("TM_CS", "CS", x + 2 * Field_Width + 30, y, Field_Width, Button_Height, clrFireBrick);
-        y += Button_Height + 10;
+    // Special action buttons - compact positioning and sizing
+        int specialButtonSpacing = (int)(panelWidth * 0.02);
+        int adaptiveFontSize = 8; // Fixed smaller font size
+        CreateButton("TM_CA", "CA", x + (int)(panelWidth * 0.03), y, adaptiveFieldWidth, adaptiveButtonHeight, clrGreen, adaptiveFontSize);
+        CreateButton("TM_CB", "CB", x + adaptiveFieldWidth + specialButtonSpacing, y, adaptiveFieldWidth, adaptiveButtonHeight, clrMidnightBlue, adaptiveFontSize);
+        CreateButton("TM_CS", "CS", x + 2 * adaptiveFieldWidth + 2 * specialButtonSpacing, y, adaptiveFieldWidth, adaptiveButtonHeight, clrFireBrick, adaptiveFontSize);
+        // Moderate spacing after special action buttons
+        y += adaptiveButtonHeight + (int)(panelHeight * 0.03);
 
-    // Stop Loss (pips from entry)
-        CreateLabel("TM_SLLabel", "Stop loss (pips):", x + 10, y, Text_Color);
-        CreateEdit(g_SLEdit, "0.0", x + 150, y, Field_Width / 2, Field_Height);
-        y += Field_Height;
+    // Adaptive label width and position
+        int labelWidth = (int)(panelWidth * 0.5);
+        int editX = x + labelWidth + (int)(panelWidth * 0.03);
+        int editWidth = (int)(adaptiveFieldWidth * 0.7);
+        
+    // Stop Loss (pips from entry) - with smaller font and white text
+        int labelFontSize = 8; // Fixed smaller font size
+        CreateLabel("TM_SLLabel", "Stop loss (pips):", x + (int)(panelWidth * 0.03), y, clrWhite, labelFontSize);  
+        CreateLabel(g_SLEdit, "0.0", editX, y, clrWhite, labelFontSize);
+        y += adaptiveFieldHeight + (int)(panelHeight * 0.02); // Reduced spacing
 
-    // Combined Stop Loss (price level)
-        CreateLabel("TM_CSLLabel", "Combined SL (price):", x + 10, y, Text_Color);
-        CreateEdit(g_CSLEdit, "0.0", x + 150, y, Field_Width / 2, Field_Height);
-        y += Field_Height;
+    // Combined Stop Loss (price level) - white text
+        CreateLabel("TM_CSLLabel", "Combined SL (price):", x + (int)(panelWidth * 0.03), y, clrWhite, labelFontSize);
+        CreateLabel(g_CSLEdit, "0.0", editX, y, clrWhite, labelFontSize);
+        y += adaptiveFieldHeight + (int)(panelHeight * 0.02); // Reduced spacing
 
-    // Break-Even Point
-        CreateLabel("TM_BEPLabel", "Break-even (pips):", x + 10, y, Text_Color);
-        CreateLabel(g_BEPEdit, DoubleToString(g_BreakEven, 1), x + 120, y, Text_Color);
-        y += Field_Height;
+    // Break-Even Point - white text
+        CreateLabel("TM_BEPLabel", "Break-even (pips):", x + (int)(panelWidth * 0.03), y, clrWhite, labelFontSize);
+        CreateLabel(g_BEPEdit, DoubleToString(g_BreakEven, 1), editX, y, clrWhite, labelFontSize);
+        y += adaptiveFieldHeight + (int)(panelHeight * 0.02); // Reduced spacing
 
-    // Trailing Stop
-        CreateLabel("TM_TSLabel", "Trailing stop (pips):", x + 10, y, Text_Color);
-        CreateLabel(g_TSEdit, DoubleToString(g_TrailingStop, 1), x + 120, y, Text_Color);
+    // Trailing Stop - white text
+        CreateLabel("TM_TSLabel", "Trailing stop (pips):", x + (int)(panelWidth * 0.03), y, clrWhite, labelFontSize);
+        CreateLabel(g_TSEdit, DoubleToString(g_TrailingStop, 1), editX, y, clrWhite, labelFontSize);
+        
+        // No need to add chart event handler here as it's already set in OnInit
     }
 
 //+------------------------------------------------------------------+
 //| Create a button                                                  |
 //+------------------------------------------------------------------+
-    void CreateButton(string name, string text, int x, int y, int width, int height, color clr)
+    void CreateButton(string name, string text, int x, int y, int width, int height, color clr, int fontSize = 10, int id = 0)
     {
         ObjectCreate(0, name, OBJ_BUTTON, 0, 0, 0);
         ObjectSetInteger(0, name, OBJPROP_CORNER, Panel_Corner);
@@ -343,7 +384,7 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         ObjectSetInteger(0, name, OBJPROP_ZORDER, 0);
         ObjectSetString(0, name, OBJPROP_TEXT, text);
         ObjectSetString(0, name, OBJPROP_FONT, "Arial Bold");
-        ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 10);
+        ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fontSize);
         ObjectSetInteger(0, name, OBJPROP_COLOR, (int)clrWhite);
     }
 
@@ -369,39 +410,20 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         ObjectSetInteger(0, name, OBJPROP_ZORDER, 0);
     }
 
-//+------------------------------------------------------------------+
-//| Create a button                                                  |
-//+------------------------------------------------------------------+
-    void CreateButton(string name, string text, int x, int y, int width, int height, color clr, int id)
-    {
-        ObjectCreate(0, name, OBJ_BUTTON, 0, 0, 0);
-        ObjectSetInteger(0, name, OBJPROP_CORNER, Panel_Corner);
-        ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
-        ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
-        ObjectSetInteger(0, name, OBJPROP_XSIZE, width);
-        ObjectSetInteger(0, name, OBJPROP_YSIZE, height);
-        ObjectSetInteger(0, name, OBJPROP_BGCOLOR, (int)clr);
-        ObjectSetInteger(0, name, OBJPROP_BORDER_COLOR, (int)clrBlack);
-        ObjectSetInteger(0, name, OBJPROP_BORDER_TYPE, BORDER_FLAT);
-        ObjectSetInteger(0, name, OBJPROP_WIDTH, 1);
-        ObjectSetInteger(0, name, OBJPROP_CORNER, Panel_Corner);
-        ObjectSetInteger(0, name, OBJPROP_STYLE, STYLE_SOLID);
-        ObjectSetInteger(0, name, OBJPROP_BACK, false);
-        ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
-        ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
-        ObjectSetInteger(0, name, OBJPROP_ZORDER, 0);
-        ObjectSetString(0, name, OBJPROP_TEXT, text);
-        ObjectSetString(0, name, OBJPROP_FONT, "Arial Bold");
-        ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 10);
-        ObjectSetInteger(0, name, OBJPROP_COLOR, (int)clrWhite);
-    }
+// This function has been removed to avoid duplication
+// The functionality is merged into the other CreateButton function
 
 //+------------------------------------------------------------------+
 //| Create a label                                                   |
 //+------------------------------------------------------------------+
     void CreateLabel(string name, string text, int x, int y, color clr, int fontSize = 10, string font = "Arial")
     {
+        // Get chart dimensions for adaptive font sizing if not specified
+        if(fontSize == 10) { // Default value, use adaptive sizing
+            int chartHeight = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS);
+            fontSize = MathMax(8, MathMin(14, (int)(chartHeight * 0.015))); // 1.5% of chart height
+        }
+        
         ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
         ObjectSetInteger(0, name, OBJPROP_CORNER, Panel_Corner);
         ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
@@ -419,6 +441,10 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
 //+------------------------------------------------------------------+
     void CreateEdit(string name, string text, int x, int y, int width, int height)
     {
+        // Calculate adaptive font size based on edit control height
+        int chartHeight = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS);
+        int fontSize = MathMax(8, MathMin(12, (int)(height * 0.6)));
+        
         ObjectCreate(0, name, OBJ_EDIT, 0, 0, 0);
         ObjectSetInteger(0, name, OBJPROP_CORNER, Panel_Corner);
         ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
@@ -438,7 +464,7 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         ObjectSetInteger(0, name, OBJPROP_ZORDER, 0);
         ObjectSetString(0, name, OBJPROP_TEXT, text);
         ObjectSetString(0, name, OBJPROP_FONT, "Arial");
-        ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 10);
+        ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fontSize);
         ObjectSetInteger(0, name, OBJPROP_COLOR, (int)clrBlack);
         ObjectSetInteger(0, name, OBJPROP_READONLY, false);
         ObjectSetInteger(0, name, OBJPROP_ALIGN, ALIGN_RIGHT);
@@ -574,21 +600,21 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         int buttonX2 = Panel_X + Button_Width + 10;
     
     // Buy and Sell buttons
-        CreateButton(g_B, "BUY", buttonX1, buttonY, Button_Width, Button_Height, Button_Color, BUTTON_BUY);
-        CreateButton(g_S, "SELL", buttonX2, buttonY, Button_Width, Button_Height, clrRed, BUTTON_SELL);
+        CreateButton(g_B, "BUY", buttonX1, buttonY, Button_Width, Button_Height, Button_Color, 10, BUTTON_BUY);
+        CreateButton(g_S, "SELL", buttonX2, buttonY, Button_Width, Button_Height, clrRed, 10, BUTTON_SELL);
     
     // Close buttons
         buttonY += Button_Height + 5;
-        CreateButton(g_X, "X", buttonX1, buttonY, Button_Width, Button_Height, clrOrange, BUTTON_CLOSE_X);
-        CreateButton(g_P, "P", buttonX2, buttonY, Button_Width, Button_Height, clrOrange, BUTTON_CLOSE_P);
+        CreateButton(g_X, "X", buttonX1, buttonY, Button_Width, Button_Height, clrOrange, 10, BUTTON_CLOSE_X);
+        CreateButton(g_P, "P", buttonX2, buttonY, Button_Width, Button_Height, clrOrange, 10, BUTTON_CLOSE_P);
     
     // Close All/Buy/Sell buttons
         buttonY += Button_Height + 5;
-        CreateButton(g_CA, "CA", buttonX1, buttonY, Button_Width, Button_Height, clrOrange, BUTTON_CLOSE_ALL);
+        CreateButton(g_CA, "CA", buttonX1, buttonY, Button_Width, Button_Height, clrOrange, 10, BUTTON_CLOSE_ALL);
     
         buttonY += Button_Height + 5;
-        CreateButton(g_CB, "CB", buttonX1, buttonY, Button_Width, Button_Height, clrOrange, BUTTON_CLOSE_BUY);
-        CreateButton(g_CS, "CS", buttonX2, buttonY, Button_Width, Button_Height, clrOrange, BUTTON_CLOSE_SELL);
+        CreateButton(g_CB, "CB", buttonX1, buttonY, Button_Width, Button_Height, clrOrange, 10, BUTTON_CLOSE_BUY);
+        CreateButton(g_CS, "CS", buttonX2, buttonY, Button_Width, Button_Height, clrOrange, 10, BUTTON_CLOSE_SELL);
     }
 
 //+------------------------------------------------------------------+
