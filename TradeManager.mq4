@@ -36,12 +36,11 @@
 #define TM_CA "TM_CA"
 #define TM_CB "TM_CB"
 #define TM_CS "TM_CS"
-#define TM_SLLabel "SLLabel"
 #define TM_CSLLabel "CSLLabel"
+#define TM_CSLSetButton "CSLSetButton"
 #define TM_BEPLabel "BEPLabel"
 #define TM_TSLabel "TSLabel"
 #define TM_LotSizeEdit "LotSizeEdit"
-#define TM_SLEdit "SLEdit"
 #define TM_CSLEdit "CSLEdit"
 #define TM_BEPEdit "BEPEdit"
 #define TM_TSEdit "TSEdit"
@@ -56,12 +55,11 @@ string g_P = "TM_P";
 string g_CA = "TM_CA";
 string g_CB = "TM_CB";
 string g_CS = "TM_CS";
-string g_SLLabel = "SLLabel";
 string g_CSLLabel = "CSLLabel";
+string g_CSLSetButton = "CSLSetButton";
 string g_BEPLabel = "BEPLabel";
 string g_TSLabel = "TSLabel";
 string g_LotSizeEdit = "LotSizeEdit";
-string g_SLEdit = "SLEdit";
 string g_CSLEdit = "CSLEdit";
 string g_BEPEdit = "BEPEdit";
 string g_TSEdit = "TSEdit";
@@ -74,8 +72,8 @@ string g_TSEdit = "TSEdit";
 #define CA "CA"
 #define CB "CB"
 #define CS "CS"
-#define SL "SL"
 #define CSL "CSL"
+#define SET "SET"
 #define BEP "BEP"
 #define TS "TS"
 
@@ -96,7 +94,6 @@ input int Label_Height = 20; // Label Height
 
 // Global variables
 double g_LotSize = 0.01;
-double g_StopLoss = 0.0;
 double g_CombinedSL = 0.0;
 double g_BreakEven = 0.0;
 double g_TrailingStop = 0.0;
@@ -174,6 +171,10 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
     {
         // Check if CA, CB, CS buttons exist and are clickable
         static int tickCount = 0;
+        static double lastCombinedSL = 0;
+        
+        // Check combined stop loss on every tick
+        ManageCombinedStopLoss();
         
         // Every 10 ticks, check the buttons (more frequent checking)
         if(tickCount % 10 == 0) {
@@ -242,6 +243,25 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
             if(sparam == "TM_CA" || sparam == "TM_CB" || sparam == "TM_CS") {
                 Print("Special button clicked: ", sparam);
                 ProcessButtonAction(sparam);
+                return;
+            }
+            
+            // Handle Combined SL Set button
+            if(sparam == g_CSLSetButton) {
+                // Get the value from the CSL edit field
+                double cslValue = StringToDouble(ObjectGetString(0, g_CSLEdit, OBJPROP_TEXT));
+                // Allow 0.0 to remove stop loss, but not negative values
+                if(cslValue >= 0) {
+                    g_CombinedSL = cslValue;
+                    if(cslValue == 0.0) {
+                        Print("Combined SL set to 0.0 - removing stop loss from all orders");
+                    } else {
+                        Print("Combined SL set to: ", g_CombinedSL);
+                    }
+                    
+                    // Apply the stop loss to all active orders
+                    ApplyCombinedStopLoss(g_CombinedSL);
+                }
                 return;
             }
             
@@ -315,8 +335,15 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         else if(id == CHARTEVENT_OBJECT_ENDEDIT)
         {
             // Handle edit controls
+            // Handle Combined SL edit field
+            if(sparam == g_CSLEdit)
+            {
+                double cslValue = StringToDouble(ObjectGetString(0, sparam, OBJPROP_TEXT));
+                // Store the value but don't apply it yet (wait for Set button)
+                ObjectSetString(0, sparam, OBJPROP_TEXT, DoubleToString(cslValue, 5));
+            }
             // Check if the edit control is one of our lot size edits (TM_LotEdit1-TM_LotEdit5)
-            if(StringSubstr(sparam, 0, 10) == "TM_LotEdit")
+            else if(StringSubstr(sparam, 0, 10) == "TM_LotEdit")
             {
                 string rowSuffix = StringSubstr(sparam, 10, StringLen(sparam) - 10);
                 int rowIndex = -1;
@@ -446,15 +473,16 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         int editX = x + labelWidth + (int)(panelWidth * 0.03);
         int editWidth = (int)(adaptiveFieldWidth * 0.7);
         
-    // Stop Loss (pips from entry) - with smaller font and white text
-        int labelFontSize = 8; // Fixed smaller font size
-        CreateLabel("TM_SLLabel", "Stop loss (pips):", x + (int)(panelWidth * 0.03), y, clrWhite, labelFontSize);  
-        CreateLabel(g_SLEdit, "0.0", editX, y, clrWhite, labelFontSize);
-        y += adaptiveFieldHeight + (int)(panelHeight * 0.02); // Reduced spacing
-
-    // Combined Stop Loss (price level) - white text
-        CreateLabel("TM_CSLLabel", "Combined SL (price):", x + (int)(panelWidth * 0.03), y, clrWhite, labelFontSize);
-        CreateLabel(g_CSLEdit, "0.0", editX, y, clrWhite, labelFontSize);
+    // Combined Stop Loss (price level) - white text with input field and Set button
+        int labelFontSize = 9; // Fixed smaller font size
+        CreateLabel("TM_CSLLabel", "Combined SL (price):", x + (int)(panelWidth * 0.03), y + 5, clrWhite, labelFontSize);
+        CreateEdit(g_CSLEdit, "0.0", editX + 10, y, editWidth + 50, adaptiveFieldHeight);
+        
+        // Add Set button next to the combined SL field - using fixed button to prevent dragging
+        int setButtonWidth = (int)(adaptiveFieldWidth * 0.5);
+        int setButtonX = editX + editWidth + 5;
+        CreateFixedButton(g_CSLSetButton, "SET", setButtonX + 60, y, setButtonWidth + 50, adaptiveFieldHeight, clrGreen, labelFontSize);
+        
         y += adaptiveFieldHeight + (int)(panelHeight * 0.02); // Reduced spacing
 
     // Break-Even Point - white text
@@ -467,6 +495,55 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         CreateLabel(g_TSEdit, DoubleToString(g_TrailingStop, 1), editX, y, clrWhite, labelFontSize);
         
         // No need to add chart event handler here as it's already set in OnInit
+    }
+
+//+------------------------------------------------------------------+
+//| Create a special non-draggable button (for Set button)           |
+//+------------------------------------------------------------------+
+    void CreateFixedButton(string name, string text, int x, int y, int width, int height, color clr, int fontSize = 10)
+    {
+        // Delete button if it already exists
+        if(ObjectFind(0, name) >= 0) {
+            ObjectDelete(0, name);
+        }
+        
+        // Create the button
+        if(!ObjectCreate(0, name, OBJ_BUTTON, 0, 0, 0)) {
+            Print("Failed to create fixed button: ", name, ". Error: ", GetLastError());
+            return;
+        }
+        
+        // Set button properties
+        ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
+        ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+        ObjectSetInteger(0, name, OBJPROP_XSIZE, width);
+        ObjectSetInteger(0, name, OBJPROP_YSIZE, height);
+        ObjectSetInteger(0, name, OBJPROP_BGCOLOR, clr);
+        ObjectSetInteger(0, name, OBJPROP_BORDER_COLOR, (int)clrBlack);
+        ObjectSetInteger(0, name, OBJPROP_BORDER_TYPE, BORDER_FLAT);
+        ObjectSetInteger(0, name, OBJPROP_WIDTH, 1);
+        ObjectSetInteger(0, name, OBJPROP_CORNER, Panel_Corner);
+        ObjectSetInteger(0, name, OBJPROP_STYLE, STYLE_SOLID);
+        ObjectSetInteger(0, name, OBJPROP_BACK, false);
+        ObjectSetInteger(0, name, OBJPROP_STATE, false);
+        
+        // Critical settings to prevent dragging
+        ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);  // Not selectable
+        ObjectSetInteger(0, name, OBJPROP_SELECTED, false);    // Not selected
+        ObjectSetInteger(0, name, OBJPROP_HIDDEN, false);      // Visible
+        ObjectSetInteger(0, name, OBJPROP_ZORDER, 200);        // Highest Z-order
+        
+        // Text properties
+        ObjectSetString(0, name, OBJPROP_TEXT, text);
+        ObjectSetString(0, name, OBJPROP_FONT, "Arial Bold");
+        ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fontSize);
+        ObjectSetInteger(0, name, OBJPROP_COLOR, (int)clrWhite);
+        
+        // Debug print
+        Print("Fixed button created: ", name, " at position ", x, ",", y, " - width: ", width, ", height: ", height);
+        
+        // Force chart redraw to make sure button appears
+        ChartRedraw(0);
     }
 
 //+------------------------------------------------------------------+
@@ -500,10 +577,14 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         ObjectSetInteger(0, name, OBJPROP_STATE, false);
         
         // Critical settings for clickability
-        ObjectSetInteger(0, name, OBJPROP_SELECTABLE, true);  // Make selectable
+        ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false); // Make not selectable for dragging
         ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
         ObjectSetInteger(0, name, OBJPROP_HIDDEN, false);     // Make visible
         ObjectSetInteger(0, name, OBJPROP_ZORDER, 100);      // Bring to front
+        
+        // These settings help prevent dragging
+        ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER); // Anchor firmly
+        ObjectSetInteger(0, name, OBJPROP_READONLY, true);   // Make not editable
         
         // Text properties
         ObjectSetString(0, name, OBJPROP_TEXT, text);
@@ -624,15 +705,9 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
 //+------------------------------------------------------------------+
 //| Open a buy order                                                 |
 //+------------------------------------------------------------------+
-    void OpenBuyOrder(double lotSize, double stopLoss = 0)
+    void OpenBuyOrder(double lotSize)
     {
-        double sl = 0;
-        if(stopLoss > 0)
-        {
-            sl = Bid - stopLoss * Point;
-        }
-    
-        int ticket = OrderSend(Symbol(), OP_BUY, lotSize, Ask, 3, sl, 0, "Trade Manager Buy", 0, 0, clrBlue);
+        int ticket = OrderSend(Symbol(), OP_BUY, lotSize, Ask, 3, 0, 0, "Trade Manager Buy", 0, 0, clrBlue);
         if(ticket < 0)
         {
             int error = GetLastError();
@@ -647,15 +722,9 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
 //+------------------------------------------------------------------+
 //| Open a sell order                                                |
 //+------------------------------------------------------------------+
-    void OpenSellOrder(double lotSize, double stopLoss = 0)
+    void OpenSellOrder(double lotSize)
     {
-        double sl = 0;
-        if(stopLoss > 0)
-        {
-            sl = Ask + stopLoss * Point;
-        }
-    
-        int ticket = OrderSend(Symbol(), OP_SELL, lotSize, Bid, 3, sl, 0, "Trade Manager Sell", 0, 0, clrRed);
+        int ticket = OrderSend(Symbol(), OP_SELL, lotSize, Bid, 3, 0, 0, "Trade Manager Sell", 0, 0, clrRed);
         if(ticket < 0)
         {
             int error = GetLastError();
@@ -757,20 +826,23 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         int spacing = 30;
     
         CreateLabel(g_LotSizeLabel, "Lot Size:", labelX, labelY, Text_Color);
-        CreateLabel(g_SLLabel, "Stop Loss:", labelX, labelY + spacing, Text_Color);
-        CreateLabel(g_CSLLabel, "Combined SL:", labelX, labelY + spacing * 2, Text_Color);
-        CreateLabel(g_BEPLabel, "Break Even:", labelX, labelY + spacing * 3, Text_Color);
-        CreateLabel(g_TSLabel, "Trailing Stop:", labelX, labelY + spacing * 4, Text_Color);
+        CreateLabel(g_CSLLabel, "Combined SL:", labelX, labelY + spacing, Text_Color);
+        CreateLabel(g_BEPLabel, "Break Even:", labelX, labelY + spacing * 2, Text_Color);
+        CreateLabel(g_TSLabel, "Trailing Stop:", labelX, labelY + spacing * 3, Text_Color);
     
     // Create edit boxes
         int editX = Panel_X + panelWidth - Field_Width - 10;
         int editY = labelY;
     
         CreateEdit(g_LotSizeEdit, DoubleToString(g_LotSize, 2), editX, editY, Field_Width, Field_Height);
-        CreateEdit(g_SLEdit, DoubleToString(g_StopLoss, 1), editX, editY + spacing, Field_Width, Field_Height);
-        CreateEdit(g_CSLEdit, DoubleToString(g_CombinedSL, 1), editX, editY + spacing * 2, Field_Width, Field_Height);
-        CreateEdit(g_BEPEdit, DoubleToString(g_BreakEven, 1), editX, editY + spacing * 3, Field_Width, Field_Height);
-        CreateEdit(g_TSEdit, DoubleToString(g_TrailingStop, 1), editX, editY + spacing * 4, Field_Width, Field_Height);
+        
+        // Combined SL with Set button
+        int cslButtonWidth = Field_Width / 2;
+        CreateEdit(g_CSLEdit, DoubleToString(g_CombinedSL, 5), editX, editY + spacing, Field_Width - cslButtonWidth - 5, Field_Height);
+        CreateFixedButton(g_CSLSetButton, "SET", editX + Field_Width - cslButtonWidth, editY + spacing, cslButtonWidth, Field_Height, clrGreen, 8);
+        
+        CreateEdit(g_BEPEdit, DoubleToString(g_BreakEven, 1), editX, editY + spacing * 2, Field_Width, Field_Height);
+        CreateEdit(g_TSEdit, DoubleToString(g_TrailingStop, 1), editX, editY + spacing * 3, Field_Width, Field_Height);
     
     // Create buttons
         int buttonY = editY + spacing * 5 + 10;
@@ -1047,7 +1119,17 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
 //+------------------------------------------------------------------+
     void ManageCombinedStopLoss()
     {
-        if(g_CombinedSL <= 0) return;
+        // Get the current combined SL value from the global variable
+        // This value is updated when the Set button is clicked
+        if(g_CombinedSL < 0) return; // Only return if negative, allow 0.0
+        
+        // Update the display in the edit field to show the current value
+        if(ObjectFind(0, g_CSLEdit) >= 0) {
+            ObjectSetString(0, g_CSLEdit, OBJPROP_TEXT, DoubleToString(g_CombinedSL, 5));
+        }
+        
+        // If g_CombinedSL is 0.0, there's no stop loss to check, so return
+        if(g_CombinedSL == 0.0) return;
 
     // For buy orders
         bool hasBuyOrders = false;
@@ -1060,6 +1142,7 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
                     hasBuyOrders = true;
                     if(Bid <= g_CombinedSL)
                     {
+                        Print("Combined SL triggered for BUY orders at price: ", Bid, ", SL level: ", g_CombinedSL);
                         CloseBuyPositions(100);
                         break;
                     }
@@ -1078,10 +1161,93 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
                     hasSellOrders = true;
                     if(Ask >= g_CombinedSL && g_CombinedSL > 0)
                     {
+                        Print("Combined SL triggered for SELL orders at price: ", Ask, ", SL level: ", g_CombinedSL);
                         CloseSellPositions(100);
                         break;
                     }
                 }
             }
         }
+    }
+    
+//+------------------------------------------------------------------+
+//| Apply combined stop loss to all active orders                     |
+//+------------------------------------------------------------------+
+    void ApplyCombinedStopLoss(double stopLossPrice)
+    {
+        // Allow stopLossPrice to be 0.0 to remove stop loss
+        // Only return if it's negative
+        if(stopLossPrice < 0) return;
+        
+        int totalModified = 0;
+        int totalOrders = 0;
+        
+        // Loop through all orders
+        for(int i = 0; i < OrdersTotal(); i++)
+        {
+            if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            {
+                if(OrderSymbol() == Symbol())
+                {
+                    totalOrders++;
+                    double currentSL = OrderStopLoss();
+                    bool needModify = false;
+                    
+                    // Special case: if stopLossPrice is 0.0, we're removing the stop loss
+                    if(stopLossPrice == 0.0 && currentSL != 0.0)
+                    {
+                        needModify = true; // Remove existing stop loss
+                    }
+                    // Normal case: setting a non-zero stop loss
+                    else if(stopLossPrice > 0.0)
+                    {
+                        // For buy orders, stop loss should be below current price
+                        if(OrderType() == OP_BUY)
+                        {
+                            // Only modify if the new SL is different from the current one
+                            // and the new SL is below the current price (valid SL for buy)
+                            if(stopLossPrice < Bid && (MathAbs(currentSL - stopLossPrice) > Point || currentSL == 0))
+                            {
+                                needModify = true;
+                            }
+                        }
+                        // For sell orders, stop loss should be above current price
+                        else if(OrderType() == OP_SELL)
+                        {
+                            // Only modify if the new SL is different from the current one
+                            // and the new SL is above the current price (valid SL for sell)
+                            if(stopLossPrice > Ask && (MathAbs(currentSL - stopLossPrice) > Point || currentSL == 0))
+                            {
+                                needModify = true;
+                            }
+                        }
+                    }
+                    
+                    // Modify the order if needed
+                    if(needModify)
+                    {
+                        bool result = OrderModify(
+                            OrderTicket(),
+                            OrderOpenPrice(),
+                            stopLossPrice,
+                            OrderTakeProfit(),
+                            0,
+                            OrderType() == OP_BUY ? clrBlue : clrRed
+                        );
+                        
+                        if(result)
+                        {
+                            totalModified++;
+                            Print("Modified ", OrderType() == OP_BUY ? "Buy" : "Sell", " order #", OrderTicket(), ", SL set to ", stopLossPrice);
+                        }
+                        else
+                        {
+                            Print("Failed to modify order #", OrderTicket(), ", Error: ", GetLastError());
+                        }
+                    }
+                }
+            }
+        }
+        
+        Print("Combined SL applied: Modified ", totalModified, " of ", totalOrders, " orders");
     }
