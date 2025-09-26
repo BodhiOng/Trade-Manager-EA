@@ -39,11 +39,9 @@
 #define TM_CSLLabel "CSLLabel"
 #define TM_CSLSetButton "CSLSetButton"
 #define TM_BEPLabel "BEPLabel"
-#define TM_TSLabel "TSLabel"
 #define TM_LotSizeEdit "LotSizeEdit"
 #define TM_CSLEdit "CSLEdit"
 #define TM_BEPEdit "BEPEdit"
-#define TM_TSEdit "TSEdit"
 
 // UI Element Names as strings for easier use
 string g_Title = "Trade Manager";
@@ -58,11 +56,9 @@ string g_CS = "TM_CS";
 string g_CSLLabel = "CSLLabel";
 string g_CSLSetButton = "CSLSetButton";
 string g_BEPLabel = "BEPLabel";
-string g_TSLabel = "TSLabel";
 string g_LotSizeEdit = "LotSizeEdit";
 string g_CSLEdit = "CSLEdit";
 string g_BEPEdit = "BEPEdit";
-string g_TSEdit = "TSEdit";
 
 // UI Element Text
 #define B "BUY"
@@ -75,7 +71,6 @@ string g_TSEdit = "TSEdit";
 #define CSL "CSL"
 #define SET "SET"
 #define BEP "BEP"
-#define TS "TS"
 
 // Input parameters
 input string EA_Settings = "===== EA Settings ====="; // EA Settings
@@ -96,7 +91,6 @@ input int Label_Height = 20; // Label Height
 double g_LotSize = 0.01;
 double g_CombinedSL = 0.0;
 double g_BreakEven = 0.0;
-double g_TrailingStop = 0.0;
 
 // Arrays to store multiple lot sizes
 double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
@@ -110,10 +104,27 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
 //+------------------------------------------------------------------+
     int OnInit()
     {
-        // Initialize lot sizes with starting values
-        for(int i = 0; i < 5; i++) {
-            g_LotSizes[i] = 0.01;
+        // Ensure the lot sizes array is properly initialized
+        if(ArraySize(g_LotSizes) != 5) {
+            Print("WARNING: g_LotSizes array size is not 5, resizing...");
+            ArrayResize(g_LotSizes, 5);
+            g_LotSizes[0] = 0.02;
+            g_LotSizes[1] = 0.04;
+            g_LotSizes[2] = 0.06;
+            g_LotSizes[3] = 0.08;
+            g_LotSizes[4] = 0.10;
         }
+        
+        // Print the array values for debugging
+        Print("g_LotSizes initialized with: ", 
+              g_LotSizes[0], ", ",
+              g_LotSizes[1], ", ",
+              g_LotSizes[2], ", ",
+              g_LotSizes[3], ", ",
+              g_LotSizes[4]);
+              
+        // Default lot sizes are already set in the global array declaration
+        // g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1}
         
         // Enable chart events for button clicks and other interactions
         ChartSetInteger(0, CHART_EVENT_MOUSE_MOVE, true);     // Enable chart events
@@ -276,17 +287,18 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
                     string rowStr = StringSubstr(clickedObject, 4, 1);    // Row number as string
                     int rowIndex = (int)StringToInteger(rowStr) - 1;      // Convert to 0-based index
                     
-                    // Get the hardcoded lot size for this row
-                    double lotSize = 0.0;
-                    if(rowIndex == 0) lotSize = 0.02;
-                    else if(rowIndex == 1) lotSize = 0.04;
-                    else if(rowIndex == 2) lotSize = 0.06;
-                    else if(rowIndex == 3) lotSize = 0.08;
-                    else if(rowIndex == 4) lotSize = 0.10;
+                    // Get the current lot size from the global array with safety check
+                    double lotSize = 0.01; // Default safe value
+                    if(rowIndex >= 0 && rowIndex < ArraySize(g_LotSizes)) {
+                        lotSize = g_LotSizes[rowIndex];
+                        Print("Using lot size: ", lotSize, " for row index: ", rowIndex);
+                    } else {
+                        Print("WARNING: Invalid row index: ", rowIndex, ", using default lot size: ", lotSize);
+                    }
                     
                     // Execute the appropriate action based on button type
                     if(buttonType == "B") {
-                        // Buy button clicked - use the hardcoded lot size
+                        // Buy button clicked - use the editable lot size
                         int ticket = OrderSend(Symbol(), OP_BUY, lotSize, Ask, 3, 0, 0, "Buy Order", 0, 0, Button_Color);
                         if(ticket > 0) {
                             Print("Buy order executed with lot size: ", lotSize, ", ticket: ", ticket);
@@ -295,7 +307,7 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
                         }
                     }
                     else if(buttonType == "S") {
-                        // Sell button clicked - use the hardcoded lot size
+                        // Sell button clicked - use the editable lot size
                         int ticket = OrderSend(Symbol(), OP_SELL, lotSize, Bid, 3, 0, 0, "Sell Order", 0, 0, clrRed);
                         if(ticket > 0) {
                             Print("Sell order executed with lot size: ", lotSize, ", ticket: ", ticket);
@@ -342,28 +354,39 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
                 // Store the value but don't apply it yet (wait for Set button)
                 ObjectSetString(0, sparam, OBJPROP_TEXT, DoubleToString(cslValue, 5));
             }
-            // Check if the edit control is one of our lot size edits (TM_LotEdit1-TM_LotEdit5)
-            else if(StringSubstr(sparam, 0, 10) == "TM_LotEdit")
+            // Direct handling of lot size edit fields by exact name matching
+            else if(sparam == "TM_LotEdit1" || sparam == "TM_LotEdit2" || sparam == "TM_LotEdit3" || 
+                    sparam == "TM_LotEdit4" || sparam == "TM_LotEdit5")
             {
-                string rowSuffix = StringSubstr(sparam, 10, StringLen(sparam) - 10);
-                int rowIndex = -1;
-                if(StringLen(rowSuffix) > 0) {
-                    int rowNum = (int)StringToInteger(rowSuffix);
-                    if(rowNum > 0) {
-                        rowIndex = rowNum - 1; // Convert to zero-based index
-                    }
-                }
+                // Debug print
+                Print("Lot size edit detected: ", sparam);
                 
+                // Determine which row this is (1-5)
+                int rowIndex = -1;
+                
+                if(sparam == "TM_LotEdit1") rowIndex = 0;
+                else if(sparam == "TM_LotEdit2") rowIndex = 1;
+                else if(sparam == "TM_LotEdit3") rowIndex = 2;
+                else if(sparam == "TM_LotEdit4") rowIndex = 3;
+                else if(sparam == "TM_LotEdit5") rowIndex = 4;
+                
+                Print("Direct row index: ", rowIndex);
+                
+                // Safety check
                 if(rowIndex >= 0 && rowIndex < 5) {
                     // Update the lot size for this row
                     double lotSize = StringToDouble(ObjectGetString(0, sparam, OBJPROP_TEXT));
                     if(lotSize < 0.01) lotSize = 0.01;
+                    
+                    Print("Setting lot size for row ", rowIndex, " to ", lotSize);
                     
                     // Store the lot size in the global array
                     g_LotSizes[rowIndex] = lotSize;
                     
                     // Update the text in the edit control
                     ObjectSetString(0, sparam, OBJPROP_TEXT, DoubleToString(lotSize, 2));
+                } else {
+                    Print("ERROR: Invalid row index: ", rowIndex);
                 }
             }
         }
@@ -418,16 +441,22 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
             // Position rows with clear separation from title
             int rowY = y + (row * rowSpacing);
             
-            // Lot Size for this row with hardcoded values
+            // Lot Size for this row from the global array - use exact names that match our checks
             string lotEditName = "TM_LotEdit" + rowSuffix;
-            // Hardcoded values: 0.02, 0.04, 0.06, 0.08, 0.1 from top to bottom
-            double hardcodedValue = 0.0;
-            if(row == 0) hardcodedValue = 0.02;
-            else if(row == 1) hardcodedValue = 0.04;
-            else if(row == 2) hardcodedValue = 0.06;
-            else if(row == 3) hardcodedValue = 0.08;
-            else if(row == 4) hardcodedValue = 0.10;
-            CreateEdit(lotEditName, DoubleToString(hardcodedValue, 2), x + (int)(panelWidth * 0.03), rowY, adaptiveFieldWidth, adaptiveFieldHeight);
+            
+            // Safety check for array access
+            double lotValue = 0.01; // Default safe value
+            if(row >= 0 && row < ArraySize(g_LotSizes)) {
+                lotValue = g_LotSizes[row];
+            } else {
+                Print("WARNING: Invalid row index when creating edit field: ", row);
+            }
+            
+            // Debug print
+            Print("Creating lot edit field: ", lotEditName, " for row ", row, " with value ", lotValue);
+            
+            // Use the values from the g_LotSizes array with safety
+            CreateEdit(lotEditName, DoubleToString(lotValue, 2), x + (int)(panelWidth * 0.03), rowY, adaptiveFieldWidth, adaptiveFieldHeight);
             
             // Create buttons with equal width and equal spacing, each with a distinct color
             // Use smaller fixed font size for buttons
@@ -488,11 +517,6 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
     // Break-Even Point - white text
         CreateLabel("TM_BEPLabel", "Break-even (pips):", x + (int)(panelWidth * 0.03), y, clrWhite, labelFontSize);
         CreateLabel(g_BEPEdit, DoubleToString(g_BreakEven, 1), editX, y, clrWhite, labelFontSize);
-        y += adaptiveFieldHeight + (int)(panelHeight * 0.02); // Reduced spacing
-
-    // Trailing Stop - white text
-        CreateLabel("TM_TSLabel", "Trailing stop (pips):", x + (int)(panelWidth * 0.03), y, clrWhite, labelFontSize);
-        CreateLabel(g_TSEdit, DoubleToString(g_TrailingStop, 1), editX, y, clrWhite, labelFontSize);
         
         // No need to add chart event handler here as it's already set in OnInit
     }
@@ -828,7 +852,6 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         CreateLabel(g_LotSizeLabel, "Lot Size:", labelX, labelY, Text_Color);
         CreateLabel(g_CSLLabel, "Combined SL:", labelX, labelY + spacing, Text_Color);
         CreateLabel(g_BEPLabel, "Break Even:", labelX, labelY + spacing * 2, Text_Color);
-        CreateLabel(g_TSLabel, "Trailing Stop:", labelX, labelY + spacing * 3, Text_Color);
     
     // Create edit boxes
         int editX = Panel_X + panelWidth - Field_Width - 10;
@@ -842,7 +865,6 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         CreateFixedButton(g_CSLSetButton, "SET", editX + Field_Width - cslButtonWidth, editY + spacing, cslButtonWidth, Field_Height, clrGreen, 8);
         
         CreateEdit(g_BEPEdit, DoubleToString(g_BreakEven, 1), editX, editY + spacing * 2, Field_Width, Field_Height);
-        CreateEdit(g_TSEdit, DoubleToString(g_TrailingStop, 1), editX, editY + spacing * 3, Field_Width, Field_Height);
     
     // Create buttons
         int buttonY = editY + spacing * 5 + 10;
@@ -1049,9 +1071,9 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
     }
 
 //+------------------------------------------------------------------+
-//| Manage trailing stop and break-even                              |
+//| Manage break-even                                               |
 //+------------------------------------------------------------------+
-    void ManageTrailingStopAndBreakEven()
+    void ManageBreakEven()
     {
         for(int i = 0; i < OrdersTotal(); i++)
         {
@@ -1071,18 +1093,6 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
                             if(!result)
                             Print("OrderModify error(Break - even): ", GetLastError());
                         }
-                
-                    // Trailing stop
-                        if(g_TrailingStop > 0 && currentProfit >= g_TrailingStop)
-                        {
-                            double newSL = Bid - g_TrailingStop * Point * 10;
-                            if(newSL > OrderStopLoss() + Point)
-                            {
-                                bool result = OrderModify(OrderTicket(), OrderOpenPrice(), newSL, OrderTakeProfit(), 0, clrGreen);
-                                if(!result)
-                                Print("OrderModify error(Trailing Stop): ", GetLastError());
-                            }
-                        }
                     }
                 // Sell orders
                     else if(OrderType() == OP_SELL)
@@ -1095,18 +1105,6 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
                             bool result = OrderModify(OrderTicket(), OrderOpenPrice(), OrderOpenPrice(), OrderTakeProfit(), 0, clrRed);
                             if(!result)
                             Print("OrderModify error(Break - even): ", GetLastError());
-                        }
-                    
-                    // Trailing stop
-                        if(g_TrailingStop > 0 && currentProfit >= g_TrailingStop)
-                        {
-                            double newSL = Ask + g_TrailingStop * Point * 10;
-                            if(newSL < OrderStopLoss() - Point || OrderStopLoss() == 0)
-                            {
-                                bool result = OrderModify(OrderTicket(), OrderOpenPrice(), newSL, OrderTakeProfit(), 0, clrRed);
-                                if(!result)
-                                Print("OrderModify error(Trailing Stop): ", GetLastError());
-                            }
                         }
                     }
                 }
