@@ -3,8 +3,7 @@
 //|                                      Copyright 2023, MetaQuotes |
 //|                                       https://www.metaquotes.net |
 //+----------------------------------------------------------------------+
-#property copyright "Copyright 2023, MetaQuotes"
-#property link      "https://www.metaquotes.net"
+#property copyright "bodhidharma202@gmail.com"
 #property version   "1.00"
 #property strict
 
@@ -38,10 +37,14 @@
 #define TM_CS "TM_CS"
 #define TM_CSLLabel "CSLLabel"
 #define TM_CSLSetButton "CSLSetButton"
-#define TM_BEPLabel "BEPLabel"
+#define TM_NoTrailZoneLabel "NoTrailZoneLabel"
+#define TM_NoTrailZoneSetButton "NoTrailZoneSetButton"
+#define TM_TrailingStopLabel "TrailingStopLabel"
+#define TM_TrailingStopSetButton "TrailingStopSetButton"
 #define TM_LotSizeEdit "LotSizeEdit"
 #define TM_CSLEdit "CSLEdit"
-#define TM_BEPEdit "BEPEdit"
+#define TM_NoTrailZoneEdit "NoTrailZoneEdit"
+#define TM_TrailingStopEdit "TrailingStopEdit"
 
 // UI Element Names as strings for easier use
 string g_Title = "Trade Manager";
@@ -55,10 +58,14 @@ string g_CB = "TM_CB";
 string g_CS = "TM_CS";
 string g_CSLLabel = "CSLLabel";
 string g_CSLSetButton = "CSLSetButton";
-string g_BEPLabel = "BEPLabel";
+string g_NoTrailZoneLabel = "NoTrailZoneLabel";
+string g_NoTrailZoneSetButton = "NoTrailZoneSetButton";
+string g_TrailingStopLabel = "TrailingStopLabel";
+string g_TrailingStopSetButton = "TrailingStopSetButton";
 string g_LotSizeEdit = "LotSizeEdit";
 string g_CSLEdit = "CSLEdit";
-string g_BEPEdit = "BEPEdit";
+string g_NoTrailZoneEdit = "NoTrailZoneEdit";
+string g_TrailingStopEdit = "TrailingStopEdit";
 
 // UI Element Text
 #define B "BUY"
@@ -70,7 +77,8 @@ string g_BEPEdit = "BEPEdit";
 #define CS "CS"
 #define CSL "CSL"
 #define SET "SET"
-#define BEP "BEP"
+#define NTZ "NTZ"
+#define TSP "TSP"
 
 // Input parameters
 input string EA_Settings = "===== EA Settings ====="; // EA Settings
@@ -90,7 +98,8 @@ input int Label_Height = 20; // Label Height
 // Global variables
 double g_LotSize = 0.01;
 double g_CombinedSL = 0.0;
-double g_BreakEven = 0.0;
+double g_NoTrailZone = 0.0;
+double g_TrailingStop = 0.0;
 
 // Arrays to store multiple lot sizes
 double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
@@ -106,8 +115,8 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
     {
         // Ensure the lot sizes array is properly initialized
         if(ArraySize(g_LotSizes) != 5) {
-            Print("WARNING: g_LotSizes array size is not 5, resizing...");
-            ArrayResize(g_LotSizes, 5);
+                Print("WARNING: g_LotSizes array size is not 5, resizing...");
+                ArrayResize(g_LotSizes, 5);
             g_LotSizes[0] = 0.02;
             g_LotSizes[1] = 0.04;
             g_LotSizes[2] = 0.06;
@@ -184,8 +193,9 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         static int tickCount = 0;
         static double lastCombinedSL = 0;
         
-        // Check combined stop loss on every tick
+        // Check combined stop loss and trailing stop on every tick
         ManageCombinedStopLoss();
+        ManageTrailingStop();
         
         // Every 10 ticks, check the buttons (more frequent checking)
         if(tickCount % 10 == 0) {
@@ -276,6 +286,30 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
                 return;
             }
             
+            // Handle No-trail zone Set button
+            if(sparam == g_NoTrailZoneSetButton) {
+                // Get the value from the No-trail zone edit field
+                double ntzValue = StringToDouble(ObjectGetString(0, g_NoTrailZoneEdit, OBJPROP_TEXT));
+                // Allow 0.0 or positive values
+                if(ntzValue >= 0) {
+                    g_NoTrailZone = ntzValue;
+                    Print("No-trail zone set to: ", g_NoTrailZone, " pips");
+                }
+                return;
+            }
+            
+            // Handle Trailing stop Set button
+            if(sparam == g_TrailingStopSetButton) {
+                // Get the value from the Trailing stop edit field
+                double tsValue = StringToDouble(ObjectGetString(0, g_TrailingStopEdit, OBJPROP_TEXT));
+                // Allow 0.0 or positive values
+                if(tsValue >= 0) {
+                    g_TrailingStop = tsValue;
+                    Print("Trailing stop set to: ", g_TrailingStop, " pips");
+                }
+                return;
+            }
+            
             // Handle row-specific buttons
             string clickedObject = sparam;
             
@@ -353,6 +387,24 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
                 double cslValue = StringToDouble(ObjectGetString(0, sparam, OBJPROP_TEXT));
                 // Store the value but don't apply it yet (wait for Set button)
                 ObjectSetString(0, sparam, OBJPROP_TEXT, DoubleToString(cslValue, 5));
+            }
+            // Handle No-trail zone edit field
+            else if(sparam == g_NoTrailZoneEdit)
+            {
+                double ntzValue = StringToDouble(ObjectGetString(0, sparam, OBJPROP_TEXT));
+                if(ntzValue >= 0) {
+                    g_NoTrailZone = ntzValue;
+                    ObjectSetString(0, sparam, OBJPROP_TEXT, DoubleToString(ntzValue, 1));
+                }
+            }
+            // Handle Trailing stop edit field
+            else if(sparam == g_TrailingStopEdit)
+            {
+                double tsValue = StringToDouble(ObjectGetString(0, sparam, OBJPROP_TEXT));
+                if(tsValue >= 0) {
+                    g_TrailingStop = tsValue;
+                    ObjectSetString(0, sparam, OBJPROP_TEXT, DoubleToString(tsValue, 1));
+                }
             }
             // Direct handling of lot size edit fields by exact name matching
             else if(sparam == "TM_LotEdit1" || sparam == "TM_LotEdit2" || sparam == "TM_LotEdit3" || 
@@ -514,9 +566,17 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         
         y += adaptiveFieldHeight + (int)(panelHeight * 0.02); // Reduced spacing
 
-    // Break-Even Point - white text
-        CreateLabel("TM_BEPLabel", "Break-even (pips):", x + (int)(panelWidth * 0.03), y, clrWhite, labelFontSize);
-        CreateLabel(g_BEPEdit, DoubleToString(g_BreakEven, 1), editX, y, clrWhite, labelFontSize);
+    // No-trail zone - white text with input field and Set button
+        CreateLabel("TM_NoTrailZoneLabel", "No-trail zone (pips):", x + (int)(panelWidth * 0.03), y, clrWhite, labelFontSize);
+        CreateEdit(g_NoTrailZoneEdit, DoubleToString(g_NoTrailZone, 1), editX + 10, y, editWidth + 50, adaptiveFieldHeight);
+        CreateFixedButton(g_NoTrailZoneSetButton, "SET", setButtonX + 60, y, setButtonWidth + 50, adaptiveFieldHeight, clrGreen, labelFontSize);
+        
+        y += adaptiveFieldHeight + (int)(panelHeight * 0.02); // Add spacing
+        
+    // Trailing stop - white text with input field and Set button
+        CreateLabel("TM_TrailingStopLabel", "Trailing stop (pips):", x + (int)(panelWidth * 0.03), y, clrWhite, labelFontSize);
+        CreateEdit(g_TrailingStopEdit, DoubleToString(g_TrailingStop, 1), editX + 10, y, editWidth + 50, adaptiveFieldHeight);
+        CreateFixedButton(g_TrailingStopSetButton, "SET", setButtonX + 60, y, setButtonWidth + 50, adaptiveFieldHeight, clrGreen, labelFontSize);
         
         // No need to add chart event handler here as it's already set in OnInit
     }
@@ -851,7 +911,8 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
     
         CreateLabel(g_LotSizeLabel, "Lot Size:", labelX, labelY, Text_Color);
         CreateLabel(g_CSLLabel, "Combined SL:", labelX, labelY + spacing, Text_Color);
-        CreateLabel(g_BEPLabel, "Break Even:", labelX, labelY + spacing * 2, Text_Color);
+        CreateLabel(g_NoTrailZoneLabel, "No-trail zone:", labelX, labelY + spacing * 2, Text_Color);
+        CreateLabel(g_TrailingStopLabel, "Trailing stop:", labelX, labelY + spacing * 3, Text_Color);
     
     // Create edit boxes
         int editX = Panel_X + panelWidth - Field_Width - 10;
@@ -864,7 +925,11 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         CreateEdit(g_CSLEdit, DoubleToString(g_CombinedSL, 5), editX, editY + spacing, Field_Width - cslButtonWidth - 5, Field_Height);
         CreateFixedButton(g_CSLSetButton, "SET", editX + Field_Width - cslButtonWidth, editY + spacing, cslButtonWidth, Field_Height, clrGreen, 8);
         
-        CreateEdit(g_BEPEdit, DoubleToString(g_BreakEven, 1), editX, editY + spacing * 2, Field_Width, Field_Height);
+        CreateEdit(g_NoTrailZoneEdit, DoubleToString(g_NoTrailZone, 1), editX, editY + spacing * 2, Field_Width - cslButtonWidth - 5, Field_Height);
+        CreateFixedButton(g_NoTrailZoneSetButton, "SET", editX + Field_Width - cslButtonWidth, editY + spacing * 2, cslButtonWidth, Field_Height, clrGreen, 8);
+        
+        CreateEdit(g_TrailingStopEdit, DoubleToString(g_TrailingStop, 1), editX, editY + spacing * 3, Field_Width - cslButtonWidth - 5, Field_Height);
+        CreateFixedButton(g_TrailingStopSetButton, "SET", editX + Field_Width - cslButtonWidth, editY + spacing * 3, cslButtonWidth, Field_Height, clrGreen, 8);
     
     // Create buttons
         int buttonY = editY + spacing * 5 + 10;
@@ -1071,10 +1136,13 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
     }
 
 //+------------------------------------------------------------------+
-//| Manage break-even                                               |
+//| Manage trailing stop with no-trail zone                         |
 //+------------------------------------------------------------------+
-    void ManageBreakEven()
+    void ManageTrailingStop()
     {
+        // If trailing stop is not set, don't do anything
+        if(g_TrailingStop <= 0) return;
+        
         for(int i = 0; i < OrdersTotal(); i++)
         {
             if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
@@ -1086,12 +1154,21 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
                     {
                         double currentProfit = (Bid - OrderOpenPrice()) / Point / 10;
                 
-                    // Break-even
-                        if(g_BreakEven > 0 && currentProfit >= g_BreakEven && OrderStopLoss() < OrderOpenPrice())
+                    // Only trail if profit exceeds no-trail zone
+                        if(currentProfit >= g_NoTrailZone)
                         {
-                            bool result = OrderModify(OrderTicket(), OrderOpenPrice(), OrderOpenPrice(), OrderTakeProfit(), 0, clrGreen);
-                            if(!result)
-                            Print("OrderModify error(Break - even): ", GetLastError());
+                            // Calculate new stop loss level
+                            double newSL = NormalizeDouble(Bid - g_TrailingStop * Point * 10, Digits);
+                            
+                            // Only modify if the new SL is higher than the current one (or no SL is set)
+                            if(newSL > OrderStopLoss() || OrderStopLoss() == 0)
+                            {
+                                bool result = OrderModify(OrderTicket(), OrderOpenPrice(), newSL, OrderTakeProfit(), 0, clrGreen);
+                                if(!result)
+                                    Print("OrderModify error(Trailing Stop): ", GetLastError());
+                                else
+                                    Print("Trailing stop updated for Buy order #", OrderTicket(), ", new SL: ", newSL);
+                            }
                         }
                     }
                 // Sell orders
@@ -1099,12 +1176,21 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
                     {
                         double currentProfit = (OrderOpenPrice() - Ask) / Point / 10;
                 
-                    // Break-even
-                        if(g_BreakEven > 0 && currentProfit >= g_BreakEven && (OrderStopLoss() > OrderOpenPrice() || OrderStopLoss() == 0))
+                    // Only trail if profit exceeds no-trail zone
+                        if(currentProfit >= g_NoTrailZone)
                         {
-                            bool result = OrderModify(OrderTicket(), OrderOpenPrice(), OrderOpenPrice(), OrderTakeProfit(), 0, clrRed);
-                            if(!result)
-                            Print("OrderModify error(Break - even): ", GetLastError());
+                            // Calculate new stop loss level
+                            double newSL = NormalizeDouble(Ask + g_TrailingStop * Point * 10, Digits);
+                            
+                            // Only modify if the new SL is lower than the current one (or no SL is set)
+                            if(newSL < OrderStopLoss() || OrderStopLoss() == 0)
+                            {
+                                bool result = OrderModify(OrderTicket(), OrderOpenPrice(), newSL, OrderTakeProfit(), 0, clrRed);
+                                if(!result)
+                                    Print("OrderModify error(Trailing Stop): ", GetLastError());
+                                else
+                                    Print("Trailing stop updated for Sell order #", OrderTicket(), ", new SL: ", newSL);
+                            }
                         }
                     }
                 }
