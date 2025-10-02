@@ -12,39 +12,8 @@
 #include <stderror.mqh>
 #include <WinUser32.mqh>
 
-// Define constants for UI elements
-#define BUTTON_BUY      1
-#define BUTTON_SELL     2
-#define BUTTON_CLOSE_X  3
-#define BUTTON_CLOSE_P  4
-#define BUTTON_CLOSE_ALL 5
-#define BUTTON_CLOSE_BUY 6
-#define BUTTON_CLOSE_SELL 7
-
 // Using built-in MQL4 chart event constants:
 // CHARTEVENT_CHART_CHANGE, CHARTEVENT_OBJECT_CLICK, CHARTEVENT_OBJECT_ENDEDIT
-
-// UI Element Names
-#define EA_Name "Trade Manager"
-#define TM_TITLE "Trade Manager"
-#define TM_LotSizeLabel "LotSizeLabel"
-#define TM_B "TM_B"
-#define TM_S "TM_S"
-#define TM_X "TM_X"
-#define TM_P "TM_P"
-#define TM_CA "TM_CA"
-#define TM_CB "TM_CB"
-#define TM_CS "TM_CS"
-#define TM_CSLLabel "CSLLabel"
-#define TM_CSLSetButton "CSLSetButton"
-#define TM_NoTrailZoneLabel "NoTrailZoneLabel"
-#define TM_NoTrailZoneSetButton "NoTrailZoneSetButton"
-#define TM_TrailingStopLabel "TrailingStopLabel"
-#define TM_TrailingStopSetButton "TrailingStopSetButton"
-#define TM_LotSizeEdit "LotSizeEdit"
-#define TM_CSLEdit "CSLEdit"
-#define TM_NoTrailZoneEdit "NoTrailZoneEdit"
-#define TM_TrailingStopEdit "TrailingStopEdit"
 
 // UI Element Names as strings for easier use
 string g_Title = "Trade Manager";
@@ -66,19 +35,8 @@ string g_LotSizeEdit = "LotSizeEdit";
 string g_CSLEdit = "CSLEdit";
 string g_NoTrailZoneEdit = "NoTrailZoneEdit";
 string g_TrailingStopEdit = "TrailingStopEdit";
-
-// UI Element Text
-#define B "BUY"
-#define S "SELL"
-#define X "X"
-#define P "P"
-#define CA "CA"
-#define CB "CB"
-#define CS "CS"
-#define CSL "CSL"
-#define SET "SET"
-#define NTZ "NTZ"
-#define TSP "TSP"
+string g_HideButton = "TM_HideButton";
+string g_ShowButton = "TM_ShowButton";
 
 // Input parameters
 input string EA_Settings = "===== EA Settings ====="; // EA Settings
@@ -100,13 +58,10 @@ double g_LotSize = 0.01;
 double g_CombinedSL = 0.0;
 double g_NoTrailZone = 0.0;
 double g_TrailingStop = 0.0;
+bool g_IsPanelHidden = false; // Track if panel is hidden or visible
 
 // Arrays to store multiple lot sizes
 double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
-
-// Global variables for button states
-    bool g_BuySelected = true;
-    bool g_SellSelected = false;
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
@@ -260,6 +215,20 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         
         // Handle button clicks - this is the main event we care about
         if(id == CHARTEVENT_OBJECT_CLICK) {
+            // Handle Hide button
+            if(sparam == g_HideButton) {
+                Print("Hide button clicked");
+                HideTradePanel();
+                return;
+            }
+            
+            // Handle Show button
+            if(sparam == g_ShowButton) {
+                Print("Show button clicked");
+                ShowTradePanel();
+                return;
+            }
+            
             // Direct handling of special buttons
             if(sparam == "TM_CA" || sparam == "TM_CB" || sparam == "TM_CS") {
                 Print("Special button clicked: ", sparam);
@@ -449,42 +418,41 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
 //+------------------------------------------------------------------+
     void CreateTradePanel()
     {
-        // Get chart dimensions for adaptive sizing
-        int chartWidth = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
-        int chartHeight = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS);
-        
-        // Calculate panel size with appropriate minimum width to fit all elements
-        int panelWidth = MathMax(320, MathMin(450, (int)(chartWidth * 0.25)));
-        // Calculate panel height with sufficient height for all elements
-        int panelHeight = MathMax(500, MathMin(450, (int)(chartHeight * 0.95)));
+        // Fixed panel dimensions
+        int panelWidth = 350;  // Fixed panel width
+        int panelHeight = 450; // Fixed panel height
         
         // No panel background - removed white panel
         string panelName = "TM_Panel";
         
-        // We'll still define panel dimensions for positioning calculations
-        // but we won't create the actual panel object
-
-    // Calculate button and field sizes with more appropriate proportions
-        int adaptiveButtonWidth = MathMax(Button_Width, (int)(panelWidth * 0.5));
-        int adaptiveFieldWidth = MathMax(Field_Width, (int)(panelWidth * 0.18));
-        // Set reasonable button and field heights
-        int adaptiveButtonHeight = MathMax(18, (int)(panelHeight * 0.08));
-        int adaptiveFieldHeight = MathMax(18, (int)(panelHeight * 0.08));
+        // Fixed button and field sizes
+        int fixedButtonWidth = 80;   // Fixed button width
+        int fixedFieldWidth = 60;    // Fixed field width
+        int fixedButtonHeight = 20;  // Fixed button height
+        int fixedFieldHeight = 20;   // Fixed field height
         
-    // Initialize position variables
+        // Initialize position variables
         int x = Panel_X;
         int y = Panel_Y;
     
-    // Title with proper positioning and spacing - white text
-        CreateLabel("TM_Title", EA_Name, x + 10, y + 10, clrWhite, 12, "Arial Bold");
-        y += 60; // Significant spacing after title to prevent any overlap
+        // Title with proper positioning and spacing - white text
+        CreateLabel("TM_Title", "Trade Manager", x + 10, y + 10, clrWhite, 12, "Arial Bold");
+        
+        // Show button next to title - initially hidden
+        int showButtonWidth = 50;
+        int showButtonHeight = 20;
+        CreateFixedButton(g_ShowButton, "SHOW", x + 160, y + 15, showButtonWidth, showButtonHeight, clrGreen, 9);
+        // Initially hide the show button since panel starts visible
+        ObjectSetInteger(0, g_ShowButton, OBJPROP_HIDDEN, true);
+        
+        y += 40; // Significant spacing after title to prevent any overlap
 
-    // Trade action buttons (reduced width)
-        int smallerWidth = adaptiveButtonWidth / 3; // Reduce button width by 1/3
-        int buttonGap = (int)(panelWidth * 0.02); // Adaptive gap between buttons (2% of panel width)
-        int startX = x + adaptiveFieldWidth + (int)(panelWidth * 0.05); // Adaptive starting position
-        // Adjust row spacing to be more compact
-        int rowSpacing = adaptiveFieldHeight + (int)(panelHeight * 0.04);
+        // Trade action buttons with fixed width
+        int smallerWidth = 38;      // Fixed smaller button width
+        int buttonGap = 5;          // Fixed gap between buttons
+        int startX = x + fixedFieldWidth + 15; // Fixed starting position
+        // Fixed row spacing
+        int rowSpacing = 25;        // Fixed row spacing
     
     // Create 5 rows of lot size inputs and trade action buttons
         for(int row = 0; row < 5; row++)
@@ -508,75 +476,81 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
             Print("Creating lot edit field: ", lotEditName, " for row ", row, " with value ", lotValue);
             
             // Use the values from the g_LotSizes array with safety
-            CreateEdit(lotEditName, DoubleToString(lotValue, 2), x + (int)(panelWidth * 0.03), rowY, adaptiveFieldWidth, adaptiveFieldHeight);
+            CreateEdit(lotEditName, DoubleToString(lotValue, 2), x + 10, rowY, fixedFieldWidth, fixedFieldHeight);
             
             // Create buttons with equal width and equal spacing, each with a distinct color
-            // Use smaller fixed font size for buttons
-            int adaptiveFontSize = 8; // Fixed smaller font size for buttons
+            // Use fixed font size for buttons
+            int fixedFontSize = 8; // Fixed font size for buttons
             
-            CreateButton("TM_B" + rowSuffix, "B", startX, rowY, smallerWidth, adaptiveButtonHeight, clrDodgerBlue, adaptiveFontSize);
-            CreateButton("TM_S" + rowSuffix, "S", startX + smallerWidth + buttonGap, rowY, smallerWidth, adaptiveButtonHeight, clrCrimson, adaptiveFontSize);
-            CreateButton("TM_X" + rowSuffix, "X", startX + 2 * (smallerWidth + buttonGap), rowY, smallerWidth, adaptiveButtonHeight, clrBrown, adaptiveFontSize);
-            CreateButton("TM_P" + rowSuffix, "P", startX + 3 * (smallerWidth + buttonGap), rowY, smallerWidth, adaptiveButtonHeight, clrIndigo, adaptiveFontSize);
+            CreateButton("TM_B" + rowSuffix, "B", startX, rowY, smallerWidth, fixedButtonHeight, clrDodgerBlue, fixedFontSize);
+            CreateButton("TM_S" + rowSuffix, "S", startX + smallerWidth + buttonGap, rowY, smallerWidth, fixedButtonHeight, clrCrimson, fixedFontSize);
+            CreateButton("TM_X" + rowSuffix, "X", startX + 2 * (smallerWidth + buttonGap), rowY, smallerWidth, fixedButtonHeight, clrBrown, fixedFontSize);
+            CreateButton("TM_P" + rowSuffix, "P", startX + 3 * (smallerWidth + buttonGap), rowY, smallerWidth, fixedButtonHeight, clrIndigo, fixedFontSize);
         }
         
-        // Adjust y position after all rows with moderate spacing
-        y += (5 * rowSpacing) + (int)(panelHeight * 0.01) - 10;
+        // Adjust y position after all rows with fixed spacing
+        y += (5 * rowSpacing) + 5;
 
-    // Special action buttons - larger and more prominent
+        // Special action buttons - fixed sizes
         int specialButtonSpacing = 10; // Fixed spacing
-        int specialButtonWidth = adaptiveFieldWidth; // Make them wider
-        int specialButtonHeight = adaptiveButtonHeight; // Make them taller
-        int specialFontSize = 10; // Larger font size
+        int specialButtonWidth = 75;   // Fixed width for special buttons
+        int specialButtonHeight = 25;  // Fixed height for special buttons
+        int specialFontSize = 10;      // Fixed font size
                 
-        // Close All button (CA) - larger and more prominent
+        // Close All button (CA)
         string caName = "TM_CA";
         CreateButton(caName, "CA", x + 10, y, specialButtonWidth, specialButtonHeight, clrGreen, specialFontSize);
         Print("Created CA button: ", caName);
         
-        // Close Buy button (CB) - larger and more prominent
+        // Close Buy button (CB)
         string cbName = "TM_CB";
-        CreateButton(cbName, "CB", x + 5 +specialButtonWidth + specialButtonSpacing, y, specialButtonWidth, specialButtonHeight, clrMidnightBlue, specialFontSize);
+        CreateButton(cbName, "CB", x + 5 + specialButtonWidth + specialButtonSpacing, y, specialButtonWidth, specialButtonHeight, clrMidnightBlue, specialFontSize);
         Print("Created CB button: ", cbName);
         
-        // Close Sell button (CS) - larger and more prominent
+        // Close Sell button (CS)
         string csName = "TM_CS";
         CreateButton(csName, "CS", x + 2 * (specialButtonWidth + specialButtonSpacing), y, specialButtonWidth, specialButtonHeight, clrFireBrick, specialFontSize);
         Print("Created CS button: ", csName);
                 
         // Force chart redraw to make sure buttons appear
         ChartRedraw(0);
-        // Moderate spacing after special action buttons
-        y += adaptiveButtonHeight + (int)(panelHeight * 0.03);
+        // Fixed spacing after special action buttons
+        y += specialButtonHeight + 10;
 
-    // Adaptive label width and position
-        int labelWidth = (int)(panelWidth * 0.5);
-        int editX = x + labelWidth + (int)(panelWidth * 0.03);
-        int editWidth = (int)(adaptiveFieldWidth * 0.7);
+        // Fixed label width and position
+        int labelWidth = 120;          // Fixed label width
+        int editX = x + labelWidth + 30; // Fixed edit position
+        int editWidth = 50;            // Fixed edit width
+        int setButtonWidth = 40;       // Fixed set button width
+        int setButtonX = editX + editWidth + 5; // Fixed set button position
         
-    // Combined Stop Loss (price level) - white text with input field and Set button
-        int labelFontSize = 9; // Fixed smaller font size
-        CreateLabel("TM_CSLLabel", "Combined SL (price):", x + (int)(panelWidth * 0.03), y + 5, clrWhite, labelFontSize);
-        CreateEdit(g_CSLEdit, "0.0", editX + 10, y, editWidth + 50, adaptiveFieldHeight);
+        // Combined Stop Loss (price level) - white text with input field and Set button
+        int labelFontSize = 9;         // Fixed font size
+        CreateLabel("TM_CSLLabel", "Combined SL (price):", x + 10, y + 5, clrWhite, labelFontSize);
+        CreateEdit(g_CSLEdit, "0.0", editX, y, editWidth, fixedFieldHeight);
+        CreateFixedButton(g_CSLSetButton, "SET", setButtonX, y, setButtonWidth, fixedFieldHeight, clrGreen, labelFontSize);
         
-        // Add Set button next to the combined SL field - using fixed button to prevent dragging
-        int setButtonWidth = (int)(adaptiveFieldWidth * 0.5);
-        int setButtonX = editX + editWidth + 5;
-        CreateFixedButton(g_CSLSetButton, "SET", setButtonX + 60, y, setButtonWidth + 50, adaptiveFieldHeight, clrGreen, labelFontSize);
-        
-        y += adaptiveFieldHeight + (int)(panelHeight * 0.02); // Reduced spacing
+        y += fixedFieldHeight + 10;    // Fixed spacing
 
-    // No-trail zone - white text with input field and Set button
-        CreateLabel("TM_NoTrailZoneLabel", "No-trail zone (pips):", x + (int)(panelWidth * 0.03), y, clrWhite, labelFontSize);
-        CreateEdit(g_NoTrailZoneEdit, DoubleToString(g_NoTrailZone, 1), editX + 10, y, editWidth + 50, adaptiveFieldHeight);
-        CreateFixedButton(g_NoTrailZoneSetButton, "SET", setButtonX + 60, y, setButtonWidth + 50, adaptiveFieldHeight, clrGreen, labelFontSize);
+        // No-trail zone - white text with input field and Set button
+        CreateLabel("TM_NoTrailZoneLabel", "No-trail zone (pips):", x + 10, y, clrWhite, labelFontSize);
+        CreateEdit(g_NoTrailZoneEdit, DoubleToString(g_NoTrailZone, 1), editX, y, editWidth, fixedFieldHeight);
+        CreateFixedButton(g_NoTrailZoneSetButton, "SET", setButtonX, y, setButtonWidth, fixedFieldHeight, clrGreen, labelFontSize);
         
-        y += adaptiveFieldHeight + (int)(panelHeight * 0.02); // Add spacing
+        y += fixedFieldHeight + 10;    // Fixed spacing
         
-    // Trailing stop - white text with input field and Set button
-        CreateLabel("TM_TrailingStopLabel", "Trailing stop (pips):", x + (int)(panelWidth * 0.03), y, clrWhite, labelFontSize);
-        CreateEdit(g_TrailingStopEdit, DoubleToString(g_TrailingStop, 1), editX + 10, y, editWidth + 50, adaptiveFieldHeight);
-        CreateFixedButton(g_TrailingStopSetButton, "SET", setButtonX + 60, y, setButtonWidth + 50, adaptiveFieldHeight, clrGreen, labelFontSize);
+        // Trailing stop - white text with input field and Set button
+        CreateLabel("TM_TrailingStopLabel", "Trailing stop (pips):", x + 10, y, clrWhite, labelFontSize);
+        CreateEdit(g_TrailingStopEdit, DoubleToString(g_TrailingStop, 1), editX, y, editWidth, fixedFieldHeight);
+        CreateFixedButton(g_TrailingStopSetButton, "SET", setButtonX, y, setButtonWidth, fixedFieldHeight, clrGreen, labelFontSize);
+        
+        y += fixedFieldHeight + 10;    // Add extra spacing for the hide button
+        
+        // Hide button - wider button that spans most of the panel width
+        int hideButtonWidth = 230;  // Make it wider
+        CreateFixedButton(g_HideButton, "HIDE PANEL", x + 10, y, hideButtonWidth, fixedFieldHeight, clrOrange, labelFontSize);
+        // Set text color to black
+        ObjectSetInteger(0, g_HideButton, OBJPROP_COLOR, clrBlack);
         
         // No need to add chart event handler here as it's already set in OnInit
     }
@@ -684,31 +658,6 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
     }
 
 //+------------------------------------------------------------------+
-//| Create a panel                                                   |
-//+------------------------------------------------------------------+
-    void CreatePanel(string name, int x, int y, int width, int height, color clr)
-    {
-        ObjectCreate(0, name, OBJ_RECTANGLE_LABEL, 0, 0, 0);
-        ObjectSetInteger(0, name, OBJPROP_CORNER, Panel_Corner);
-        ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
-        ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
-        ObjectSetInteger(0, name, OBJPROP_XSIZE, width);
-        ObjectSetInteger(0, name, OBJPROP_YSIZE, height);
-        ObjectSetInteger(0, name, OBJPROP_BGCOLOR, (int)clr);
-        ObjectSetInteger(0, name, OBJPROP_BORDER_COLOR, (int)clrBlack);
-        ObjectSetInteger(0, name, OBJPROP_BORDER_TYPE, BORDER_FLAT);
-        ObjectSetInteger(0, name, OBJPROP_WIDTH, 1);
-        ObjectSetInteger(0, name, OBJPROP_BACK, false);
-        ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
-        ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
-        ObjectSetInteger(0, name, OBJPROP_ZORDER, 0);
-    }
-
-// This function has been removed to avoid duplication
-// The functionality is merged into the other CreateButton function
-
-//+------------------------------------------------------------------+
 //| Create a label                                                   |
 //+------------------------------------------------------------------+
     void CreateLabel(string name, string text, int x, int y, color clr, int fontSize = 10, string font = "Arial")
@@ -716,12 +665,6 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         // Delete label if it already exists
         if(ObjectFind(0, name) >= 0) {
             ObjectDelete(0, name);
-        }
-        
-        // Get chart dimensions for adaptive font sizing if not specified
-        if(fontSize == 10) { // Default value, use adaptive sizing
-            int chartHeight = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS);
-            fontSize = MathMax(8, MathMin(14, (int)(chartHeight * 0.015))); // 1.5% of chart height
         }
         
         // Create the label
@@ -752,9 +695,8 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
             ObjectDelete(0, name);
         }
         
-        // Calculate adaptive font size based on edit control height
-        int chartHeight = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS);
-        int fontSize = MathMax(8, MathMin(12, (int)(height * 0.6)));
+        // Use fixed font size
+        int fontSize = 8;
         
         // Create the edit control
         if(!ObjectCreate(0, name, OBJ_EDIT, 0, 0, 0)) {
@@ -784,40 +726,6 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         ObjectSetInteger(0, name, OBJPROP_COLOR, (int)clrBlack);
         ObjectSetInteger(0, name, OBJPROP_READONLY, false);
         ObjectSetInteger(0, name, OBJPROP_ALIGN, ALIGN_RIGHT);
-    }
-
-//+------------------------------------------------------------------+
-//| Open a buy order                                                 |
-//+------------------------------------------------------------------+
-    void OpenBuyOrder(double lotSize)
-    {
-        int ticket = OrderSend(Symbol(), OP_BUY, lotSize, Ask, 3, 0, 0, "Trade Manager Buy", 0, 0, clrBlue);
-        if(ticket < 0)
-        {
-            int error = GetLastError();
-            Print("OrderSend error: ", error);
-        }
-        else
-        {
-            Print("Buy order opened with lot size ", lotSize);
-        }
-    }
-
-//+------------------------------------------------------------------+
-//| Open a sell order                                                |
-//+------------------------------------------------------------------+
-    void OpenSellOrder(double lotSize)
-    {
-        int ticket = OrderSend(Symbol(), OP_SELL, lotSize, Bid, 3, 0, 0, "Trade Manager Sell", 0, 0, clrRed);
-        if(ticket < 0)
-        {
-            int error = GetLastError();
-            Print("OrderSend error: ", error);
-        }
-        else
-        {
-            Print("Sell order opened with lot size ", lotSize);
-        }
     }
 
 //+------------------------------------------------------------------+
@@ -854,104 +762,6 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         }
         
         Print("CloseAllPositions: Closed ", totalClosed, " positions");
-    }
-
-//+------------------------------------------------------------------+
-//| Helper function to close positions based on selection             |
-//+------------------------------------------------------------------+
-    void CloseSelectedPositions()
-    {
-        if(g_BuySelected)
-        {
-            CloseBuyPositions(100);
-        }
-        else if(g_SellSelected)
-        {
-            CloseSellPositions(100);
-        }
-    }
-
-//+------------------------------------------------------------------+
-//| Helper function for partial closing of positions                  |
-//+------------------------------------------------------------------+
-    void PartialClosePositions()
-    {
-        double closePercent = 50.0; // Close 50 % by default
-    
-        if(g_BuySelected)
-        {
-            CloseBuyPositions(closePercent);
-        }
-        else if(g_SellSelected)
-        {
-            CloseSellPositions(closePercent);
-        }
-    }
-
-//+------------------------------------------------------------------+
-//| Create the complete UI                                           |
-//+------------------------------------------------------------------+
-    void CreateUI()
-    {
-    // Calculate panel size based on components
-        int panelWidth = Button_Width * 2 + 20; // Width for 2 buttons side by side + padding
-        int panelHeight = 300; // Enough height for all components with spacing
-    
-    // Create main panel
-        string panelName = "TM_Panel";
-        CreatePanel(panelName, Panel_X, Panel_Y, panelWidth, panelHeight, Panel_Color);
-    
-    // Title
-        CreateLabel(g_Title, EA_Name, Panel_X + 10, Panel_Y + 10, Text_Color, 12, "Arial Bold");
-    
-    // Create labels
-        int labelX = Panel_X + 10;
-        int labelY = Panel_Y + 40;
-        int spacing = 30;
-    
-        CreateLabel(g_LotSizeLabel, "Lot Size:", labelX, labelY, Text_Color);
-        CreateLabel(g_CSLLabel, "Combined SL:", labelX, labelY + spacing, Text_Color);
-        CreateLabel(g_NoTrailZoneLabel, "No-trail zone:", labelX, labelY + spacing * 2, Text_Color);
-        CreateLabel(g_TrailingStopLabel, "Trailing stop:", labelX, labelY + spacing * 3, Text_Color);
-    
-    // Create edit boxes
-        int editX = Panel_X + panelWidth - Field_Width - 10;
-        int editY = labelY;
-    
-        CreateEdit(g_LotSizeEdit, DoubleToString(g_LotSize, 2), editX, editY, Field_Width, Field_Height);
-        
-        // Combined SL with Set button
-        int cslButtonWidth = Field_Width / 2;
-        CreateEdit(g_CSLEdit, DoubleToString(g_CombinedSL, 5), editX, editY + spacing, Field_Width - cslButtonWidth - 5, Field_Height);
-        CreateFixedButton(g_CSLSetButton, "SET", editX + Field_Width - cslButtonWidth, editY + spacing, cslButtonWidth, Field_Height, clrGreen, 8);
-        
-        CreateEdit(g_NoTrailZoneEdit, DoubleToString(g_NoTrailZone, 1), editX, editY + spacing * 2, Field_Width - cslButtonWidth - 5, Field_Height);
-        CreateFixedButton(g_NoTrailZoneSetButton, "SET", editX + Field_Width - cslButtonWidth, editY + spacing * 2, cslButtonWidth, Field_Height, clrGreen, 8);
-        
-        CreateEdit(g_TrailingStopEdit, DoubleToString(g_TrailingStop, 1), editX, editY + spacing * 3, Field_Width - cslButtonWidth - 5, Field_Height);
-        CreateFixedButton(g_TrailingStopSetButton, "SET", editX + Field_Width - cslButtonWidth, editY + spacing * 3, cslButtonWidth, Field_Height, clrGreen, 8);
-    
-    // Create buttons
-        int buttonY = editY + spacing * 5 + 10;
-        int buttonX1 = Panel_X + 10;
-        int buttonX2 = Panel_X + Button_Width + 10;
-    
-    // Buy and Sell buttons
-        CreateButton(g_B, "BUY", buttonX1, buttonY, Button_Width, Button_Height, Button_Color, 10, BUTTON_BUY);
-        CreateButton(g_S, "SELL", buttonX2, buttonY, Button_Width, Button_Height, clrRed, 10, BUTTON_SELL);
-    
-    // Close buttons
-        buttonY += Button_Height + 5;
-        CreateButton(g_X, "X", buttonX1, buttonY, Button_Width, Button_Height, clrOrange, 10, BUTTON_CLOSE_X);
-        CreateButton(g_P, "P", buttonX2, buttonY, Button_Width, Button_Height, clrOrange, 10, BUTTON_CLOSE_P);
-    
-    // Close All/Buy/Sell buttons
-        buttonY += Button_Height + 5;
-        CreateButton(g_CA, "CA", buttonX1, buttonY, Button_Width, Button_Height, clrOrange, 10, BUTTON_CLOSE_ALL);
-    
-        buttonY += Button_Height + 5;
-        CreateButton(g_CB, "CB", buttonX1, buttonY, Button_Width, Button_Height, clrOrange, 10, BUTTON_CLOSE_BUY);
-        CreateButton(g_CS, "CS", buttonX2, buttonY, Button_Width, Button_Height, clrOrange, 10, BUTTON_CLOSE_SELL);
     }
 
 //+------------------------------------------------------------------+
@@ -1254,6 +1064,100 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         }
     }
     
+//+------------------------------------------------------------------+
+//| Hide all panel elements except the title                         |
+//+------------------------------------------------------------------+
+    void HideTradePanel()
+    {
+        Print("Hiding trade panel elements");
+        g_IsPanelHidden = true;
+        
+        // Store all objects we need to hide
+        int totalObjects = ObjectsTotal(0, -1, -1);
+        string objectsToHide[150]; // Array to store objects to hide
+        int hideCount = 0;
+        
+        // First pass: collect all objects to hide
+        for(int i = 0; i < totalObjects; i++)
+        {
+            string objName = ObjectName(0, i);
+            
+            // Skip the title
+            if(objName == "TM_Title")
+                continue;
+                
+            // Skip the show button
+            if(objName == g_ShowButton)
+                continue;
+            
+            // Process Trade Manager objects (starting with TM_)
+            if(StringSubstr(objName, 0, 3) == "TM_")
+            {
+                objectsToHide[hideCount++] = objName;
+                Print("Will hide TM_ object: ", objName);
+            }
+            
+            // Also collect specific edit fields and set buttons that don't have TM_ prefix
+            if(objName == g_CSLEdit || objName == g_CSLSetButton ||
+               objName == g_NoTrailZoneEdit || objName == g_NoTrailZoneSetButton ||
+               objName == g_TrailingStopEdit || objName == g_TrailingStopSetButton ||
+               objName == "CSLLabel" || objName == "NoTrailZoneLabel" || objName == "TrailingStopLabel")
+            {
+                objectsToHide[hideCount++] = objName;
+                Print("Will hide specific object: ", objName);
+            }
+        }
+        
+        // Make sure the show button is visible
+        ObjectSetInteger(0, g_ShowButton, OBJPROP_HIDDEN, false);
+        
+        // Second pass: hide all collected objects
+        for(int i = 0; i < hideCount; i++)
+        {
+            // Try different ways to hide the object
+            ObjectSetInteger(0, objectsToHide[i], OBJPROP_HIDDEN, true); // Standard hiding
+            ObjectSetInteger(0, objectsToHide[i], OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS); // Hide in all timeframes
+            ObjectSetInteger(0, objectsToHide[i], OBJPROP_BACK, true); // Send to background
+            ObjectSetInteger(0, objectsToHide[i], OBJPROP_SELECTED, false); // Unselect
+            ObjectSetInteger(0, objectsToHide[i], OBJPROP_SELECTABLE, false); // Make unselectable
+            
+            // Move the object far away as a fallback
+            long x = 0, y = 0;
+            if(ObjectGetInteger(0, objectsToHide[i], OBJPROP_XDISTANCE, 0, x) && 
+               ObjectGetInteger(0, objectsToHide[i], OBJPROP_YDISTANCE, 0, y))
+            {
+                ObjectSetInteger(0, objectsToHide[i], OBJPROP_XDISTANCE, 5000); // Move far off screen
+                ObjectSetInteger(0, objectsToHide[i], OBJPROP_YDISTANCE, 5000); // Move far off screen
+            }
+            
+            Print("Applied multiple hide methods to: ", objectsToHide[i]);
+        }
+        
+        // Force chart redraw
+        ChartRedraw(0);
+    }
+
+//+------------------------------------------------------------------+
+//| Show all panel elements                                          |
+//+------------------------------------------------------------------+
+    void ShowTradePanel()
+    {
+        Print("Showing trade panel elements");
+        g_IsPanelHidden = false;
+        
+        // Hide the show button
+        ObjectSetInteger(0, g_ShowButton, OBJPROP_HIDDEN, true);
+        
+        // The simplest solution is to recreate the entire panel
+        // This ensures all elements are properly visible
+        CreateTradePanel();
+        
+        Print("Recreated trade panel to ensure all elements are visible");
+        
+        // Force chart redraw
+        ChartRedraw(0);
+    }
+
 //+------------------------------------------------------------------+
 //| Apply combined stop loss to all active orders                     |
 //+------------------------------------------------------------------+
