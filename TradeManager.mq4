@@ -31,10 +31,13 @@ string g_NoTrailZoneLabel = "NoTrailZoneLabel";
 string g_NoTrailZoneSetButton = "NoTrailZoneSetButton";
 string g_TrailingStopLabel = "TrailingStopLabel";
 string g_TrailingStopSetButton = "TrailingStopSetButton";
+string g_CTPLabel = "CTPLabel";
+string g_CTPSetButton = "CTPSetButton";
 string g_LotSizeEdit = "LotSizeEdit";
 string g_CSLEdit = "CSLEdit";
 string g_NoTrailZoneEdit = "NoTrailZoneEdit";
 string g_TrailingStopEdit = "TrailingStopEdit";
+string g_CTPEdit = "CTPEdit";
 string g_HideButton = "TM_HideButton";
 string g_ShowButton = "TM_ShowButton";
 
@@ -58,6 +61,7 @@ double g_LotSize = 0.01;
 double g_CombinedSL = 0.0;
 double g_NoTrailZone = 0.0;
 double g_TrailingStop = 0.0;
+double g_CombinedTP = 0.0;
 bool g_IsPanelHidden = false; // Track if panel is hidden or visible
 
 // Arrays to store multiple lot sizes
@@ -148,8 +152,9 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         static int tickCount = 0;
         static double lastCombinedSL = 0;
         
-        // Check combined stop loss and trailing stop on every tick
+        // Check combined stop loss, combined take profit and trailing stop on every tick
         ManageCombinedStopLoss();
+        ManageCombinedTakeProfit();
         ManageTrailingStop();
         
         // Every 10 ticks, check the buttons (more frequent checking)
@@ -275,6 +280,45 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
                 if(tsValue >= 0) {
                     g_TrailingStop = tsValue;
                     Print("Trailing stop set to: ", g_TrailingStop, " pips");
+                    
+                    // If trailing stop is activated, disable combined TP
+                    if(tsValue > 0.0) {
+                        g_CombinedTP = 0.0;
+                        if(ObjectFind(0, g_CTPEdit) >= 0) {
+                            ObjectSetString(0, g_CTPEdit, OBJPROP_TEXT, "0.0");
+                        }
+                    }
+                }
+                return;
+            }
+            
+            // Handle Combined TP Set button
+            if(sparam == g_CTPSetButton) {
+                // Get the value from the Combined TP edit field
+                double ctpValue = StringToDouble(ObjectGetString(0, g_CTPEdit, OBJPROP_TEXT));
+                // Allow 0.0 to remove take profit, but not negative values
+                if(ctpValue >= 0) {
+                    g_CombinedTP = ctpValue;
+                    if(ctpValue == 0.0) {
+                        Print("Combined TP set to 0.0 - removing take profit from all orders");
+                    } else {
+                        Print("Combined TP set to: ", g_CombinedTP);
+                        
+                        // If combined TP is activated, disable trailing stop and no-trail zone
+                        g_TrailingStop = 0.0;
+                        g_NoTrailZone = 0.0;
+                        
+                        // Update the edit fields
+                        if(ObjectFind(0, g_TrailingStopEdit) >= 0) {
+                            ObjectSetString(0, g_TrailingStopEdit, OBJPROP_TEXT, "0.0");
+                        }
+                        if(ObjectFind(0, g_NoTrailZoneEdit) >= 0) {
+                            ObjectSetString(0, g_NoTrailZoneEdit, OBJPROP_TEXT, "0.0");
+                        }
+                    }
+                    
+                    // Apply the take profit to all active orders
+                    ApplyCombinedTakeProfit(g_CombinedTP);
                 }
                 return;
             }
@@ -374,6 +418,13 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
                     g_TrailingStop = tsValue;
                     ObjectSetString(0, sparam, OBJPROP_TEXT, DoubleToString(tsValue, 1));
                 }
+            }
+            // Handle Combined TP edit field
+            else if(sparam == g_CTPEdit)
+            {
+                double ctpValue = StringToDouble(ObjectGetString(0, sparam, OBJPROP_TEXT));
+                // Store the value but don't apply it yet (wait for Set button)
+                ObjectSetString(0, sparam, OBJPROP_TEXT, DoubleToString(ctpValue, 5));
             }
             // Direct handling of lot size edit fields by exact name matching
             else if(sparam == "TM_LotEdit1" || sparam == "TM_LotEdit2" || sparam == "TM_LotEdit3" || 
@@ -543,6 +594,13 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         CreateLabel("TM_TrailingStopLabel", "Trailing stop (pips):", x + 10, y, clrWhite, labelFontSize);
         CreateEdit(g_TrailingStopEdit, DoubleToString(g_TrailingStop, 1), editX, y, editWidth, fixedFieldHeight);
         CreateFixedButton(g_TrailingStopSetButton, "SET", setButtonX, y, setButtonWidth, fixedFieldHeight, clrGreen, labelFontSize);
+        
+        y += fixedFieldHeight + 10;    // Fixed spacing
+        
+        // Combined Take Profit - white text with input field and Set button
+        CreateLabel("TM_CTPLabel", "Combined TP (price):", x + 10, y, clrWhite, labelFontSize);
+        CreateEdit(g_CTPEdit, DoubleToString(g_CombinedTP, 5), editX, y, editWidth, fixedFieldHeight);
+        CreateFixedButton(g_CTPSetButton, "SET", setButtonX, y, setButtonWidth, fixedFieldHeight, clrGreen, labelFontSize);
         
         y += fixedFieldHeight + 10;    // Add extra spacing for the hide button
         
@@ -950,8 +1008,8 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
 //+------------------------------------------------------------------+
     void ManageTrailingStop()
     {
-        // If trailing stop is not set, don't do anything
-        if(g_TrailingStop <= 0) return;
+        // If trailing stop is not set or combined TP is active, don't do anything
+        if(g_TrailingStop <= 0 || g_CombinedTP > 0.0) return;
         
         for(int i = 0; i < OrdersTotal(); i++)
         {
@@ -1002,6 +1060,62 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
                                     Print("Trailing stop updated for Sell order #", OrderTicket(), ", new SL: ", newSL);
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+    
+//+------------------------------------------------------------------+
+//| Manage combined take profit                                      |
+//+------------------------------------------------------------------+
+    void ManageCombinedTakeProfit()
+    {
+        // Get the current combined TP value from the global variable
+        // This value is updated when the Set button is clicked
+        if(g_CombinedTP < 0) return; // Only return if negative, allow 0.0
+        
+        // Update the display in the edit field to show the current value
+        if(ObjectFind(0, g_CTPEdit) >= 0) {
+            ObjectSetString(0, g_CTPEdit, OBJPROP_TEXT, DoubleToString(g_CombinedTP, 5));
+        }
+        
+        // If g_CombinedTP is 0.0, there's no take profit to check, so return
+        if(g_CombinedTP == 0.0) return;
+
+        // For buy orders
+        bool hasBuyOrders = false;
+        for(int i = 0; i < OrdersTotal(); i++)
+        {
+            if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            {
+                if(OrderSymbol() == Symbol() && OrderType() == OP_BUY)
+                {
+                    hasBuyOrders = true;
+                    if(Bid >= g_CombinedTP)
+                    {
+                        Print("Combined TP triggered for BUY orders at price: ", Bid, ", TP level: ", g_CombinedTP);
+                        CloseBuyPositions(100);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // For sell orders
+        bool hasSellOrders = false;
+        for(int i = 0; i < OrdersTotal(); i++)
+        {
+            if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            {
+                if(OrderSymbol() == Symbol() && OrderType() == OP_SELL)
+                {
+                    hasSellOrders = true;
+                    if(Ask <= g_CombinedTP && g_CombinedTP > 0)
+                    {
+                        Print("Combined TP triggered for SELL orders at price: ", Ask, ", TP level: ", g_CombinedTP);
+                        CloseSellPositions(100);
+                        break;
                     }
                 }
             }
@@ -1101,7 +1215,9 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
             if(objName == g_CSLEdit || objName == g_CSLSetButton ||
                objName == g_NoTrailZoneEdit || objName == g_NoTrailZoneSetButton ||
                objName == g_TrailingStopEdit || objName == g_TrailingStopSetButton ||
-               objName == "CSLLabel" || objName == "NoTrailZoneLabel" || objName == "TrailingStopLabel")
+               objName == g_CTPEdit || objName == g_CTPSetButton ||
+               objName == "CSLLabel" || objName == "NoTrailZoneLabel" || objName == "TrailingStopLabel" ||
+               objName == "TM_CTPLabel")
             {
                 objectsToHide[hideCount++] = objName;
                 Print("Will hide specific object: ", objName);
@@ -1238,4 +1354,100 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         }
         
         Print("Combined SL applied: Modified ", totalModified, " of ", totalOrders, " orders");
+    }
+    
+//+------------------------------------------------------------------+
+//| Apply combined take profit to all active orders                    |
+//+------------------------------------------------------------------+
+    void ApplyCombinedTakeProfit(double takeProfitPrice)
+    {
+        // Allow takeProfitPrice to be 0.0 to remove take profit
+        // Only return if it's negative
+        if(takeProfitPrice < 0) return;
+        
+        int totalModified = 0;
+        int totalOrders = 0;
+        
+        // If combined TP is active, disable trailing stop and no-trail zone
+        if(takeProfitPrice > 0.0) {
+            g_TrailingStop = 0.0;
+            g_NoTrailZone = 0.0;
+            
+            // Update the edit fields
+            if(ObjectFind(0, g_TrailingStopEdit) >= 0) {
+                ObjectSetString(0, g_TrailingStopEdit, OBJPROP_TEXT, "0.0");
+            }
+            if(ObjectFind(0, g_NoTrailZoneEdit) >= 0) {
+                ObjectSetString(0, g_NoTrailZoneEdit, OBJPROP_TEXT, "0.0");
+            }
+        }
+        
+        // Loop through all orders
+        for(int i = 0; i < OrdersTotal(); i++)
+        {
+            if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            {
+                if(OrderSymbol() == Symbol())
+                {
+                    totalOrders++;
+                    double currentTP = OrderTakeProfit();
+                    bool needModify = false;
+                    
+                    // Special case: if takeProfitPrice is 0.0, we're removing the take profit
+                    if(takeProfitPrice == 0.0 && currentTP != 0.0)
+                    {
+                        needModify = true; // Remove existing take profit
+                    }
+                    // Normal case: setting a non-zero take profit
+                    else if(takeProfitPrice > 0.0)
+                    {
+                        // For buy orders, take profit should be above current price
+                        if(OrderType() == OP_BUY)
+                        {
+                            // Only modify if the new TP is different from the current one
+                            // and the new TP is above the current price (valid TP for buy)
+                            if(takeProfitPrice > Bid && (MathAbs(currentTP - takeProfitPrice) > Point || currentTP == 0))
+                            {
+                                needModify = true;
+                            }
+                        }
+                        // For sell orders, take profit should be below current price
+                        else if(OrderType() == OP_SELL)
+                        {
+                            // Only modify if the new TP is different from the current one
+                            // and the new TP is below the current price (valid TP for sell)
+                            if(takeProfitPrice < Ask && (MathAbs(currentTP - takeProfitPrice) > Point || currentTP == 0))
+                            {
+                                needModify = true;
+                            }
+                        }
+                    }
+                    
+                    // Modify the order if needed
+                    if(needModify)
+                    {
+                        bool result = OrderModify(
+                            OrderTicket(),
+                            OrderOpenPrice(),
+                            OrderStopLoss(),
+                            takeProfitPrice,
+                            0,
+                            OrderType() == OP_BUY ? clrBlue : clrRed
+                        );
+                        
+                        if(result)
+                        {
+                            totalModified++;
+                            Print("Modified ", OrderType() == OP_BUY ? "Buy" : "Sell", " order #", OrderTicket(), ", TP set to ", takeProfitPrice);
+                        }
+                        else
+                        {
+                            Print("Failed to modify order #", OrderTicket(), ", Error: ", GetLastError());
+                        }
+                    }
+                }
+            }
+        }
+        
+        Print("Combined TP applied: Modified ", totalModified, " of ", totalOrders, " orders");
     }
