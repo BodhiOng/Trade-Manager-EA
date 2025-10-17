@@ -40,6 +40,8 @@ string g_TrailingStopEdit = "TrailingStopEdit";
 string g_CTPEdit = "CTPEdit";
 string g_HideButton = "TM_HideButton";
 string g_ShowButton = "TM_ShowButton";
+string g_BuyPLLabel = "TM_BuyPLLabel";
+string g_SellPLLabel = "TM_SellPLLabel";
 
 // Input parameters
 input string EA_Settings = "===== EA Settings ====="; // EA Settings
@@ -156,6 +158,9 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         ManageCombinedStopLoss();
         ManageCombinedTakeProfit();
         ManageTrailingStop();
+        
+        // Update the profit/loss display
+        UpdateProfitLossDisplay();
         
         // Every 10 ticks, check the buttons (more frequent checking)
         if(tickCount % 10 == 0) {
@@ -577,32 +582,43 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         
         // Combined Stop Loss (price level) - white text with input field and Set button
         int labelFontSize = 9;         // Fixed font size
-        CreateLabel("TM_CSLLabel", "Combined SL (price):", x + 10, y + 5, clrWhite, labelFontSize);
+        CreateLabel("TM_CSLLabel", "Combined SL (price):", x + 10, y + 5, clrWhite, labelFontSize, "Arial");
         CreateEdit(g_CSLEdit, "0.0", editX, y, editWidth, fixedFieldHeight);
         CreateFixedButton(g_CSLSetButton, "SET", setButtonX, y, setButtonWidth, fixedFieldHeight, clrGreen, labelFontSize);
         
         y += fixedFieldHeight + 10;    // Fixed spacing
 
         // No-trail zone - white text with input field and Set button
-        CreateLabel("TM_NoTrailZoneLabel", "No-trail zone (pips):", x + 10, y, clrWhite, labelFontSize);
+        CreateLabel("TM_NoTrailZoneLabel", "No-trail zone (pips):", x + 10, y, clrWhite, labelFontSize, "Arial");
         CreateEdit(g_NoTrailZoneEdit, DoubleToString(g_NoTrailZone, 1), editX, y, editWidth, fixedFieldHeight);
         CreateFixedButton(g_NoTrailZoneSetButton, "SET", setButtonX, y, setButtonWidth, fixedFieldHeight, clrGreen, labelFontSize);
         
         y += fixedFieldHeight + 10;    // Fixed spacing
         
         // Trailing stop - white text with input field and Set button
-        CreateLabel("TM_TrailingStopLabel", "Trailing stop (pips):", x + 10, y, clrWhite, labelFontSize);
+        CreateLabel("TM_TrailingStopLabel", "Trailing stop (pips):", x + 10, y, clrWhite, labelFontSize, "Arial");
         CreateEdit(g_TrailingStopEdit, DoubleToString(g_TrailingStop, 1), editX, y, editWidth, fixedFieldHeight);
         CreateFixedButton(g_TrailingStopSetButton, "SET", setButtonX, y, setButtonWidth, fixedFieldHeight, clrGreen, labelFontSize);
         
         y += fixedFieldHeight + 10;    // Fixed spacing
         
         // Combined Take Profit - white text with input field and Set button
-        CreateLabel("TM_CTPLabel", "Combined TP (price):", x + 10, y, clrWhite, labelFontSize);
+        CreateLabel("TM_CTPLabel", "Combined TP (price):", x + 10, y, clrWhite, labelFontSize, "Arial");
         CreateEdit(g_CTPEdit, DoubleToString(g_CombinedTP, 5), editX, y, editWidth, fixedFieldHeight);
         CreateFixedButton(g_CTPSetButton, "SET", setButtonX, y, setButtonWidth, fixedFieldHeight, clrGreen, labelFontSize);
         
-        y += fixedFieldHeight + 10;    // Add extra spacing for the hide button
+        y += fixedFieldHeight + 10;    // Add spacing after Combined TP
+        
+        // Add profit/loss labels on separate rows between Combined TP and Hide Panel
+        // Buy P/L label - first row
+        CreateLabel(g_BuyPLLabel, "Buy P/L: +0.00", x + 10, y, clrLime, 10, "Arial Bold");
+        
+        y += 30;    // Add spacing between P/L rows
+        
+        // Sell P/L label - second row
+        CreateLabel(g_SellPLLabel, "Sell P/L: +0.00", x + 10, y, clrLime, 10, "Arial Bold");
+        
+        y += 30;    // Add spacing before hide button
         
         // Hide button - wider button that spans most of the panel width
         int hideButtonWidth = 230;  // Make it wider
@@ -611,6 +627,9 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         ObjectSetInteger(0, g_HideButton, OBJPROP_COLOR, clrBlack);
         
         // No need to add chart event handler here as it's already set in OnInit
+        
+        // Initialize the profit/loss display
+        UpdateProfitLossDisplay();
     }
 
 //+------------------------------------------------------------------+
@@ -1217,7 +1236,7 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
                objName == g_TrailingStopEdit || objName == g_TrailingStopSetButton ||
                objName == g_CTPEdit || objName == g_CTPSetButton ||
                objName == "CSLLabel" || objName == "NoTrailZoneLabel" || objName == "TrailingStopLabel" ||
-               objName == "TM_CTPLabel")
+               objName == "TM_CTPLabel" || objName == g_BuyPLLabel || objName == g_SellPLLabel)
             {
                 objectsToHide[hideCount++] = objName;
                 Print("Will hide specific object: ", objName);
@@ -1450,4 +1469,61 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         }
         
         Print("Combined TP applied: Modified ", totalModified, " of ", totalOrders, " orders");
+    }
+    
+//+------------------------------------------------------------------+
+//| Calculate and update the total profit/loss for Buy and Sell orders |
+//+------------------------------------------------------------------+
+    void UpdateProfitLossDisplay()
+    {
+        double buyPL = 0.0;
+        double sellPL = 0.0;
+        
+        // Loop through all orders to calculate total profit/loss
+        for(int i = 0; i < OrdersTotal(); i++)
+        {
+            if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            {
+                if(OrderSymbol() == Symbol())
+                {
+                    // Add profit/loss to the appropriate total
+                    if(OrderType() == OP_BUY)
+                    {
+                        buyPL += OrderProfit();
+                    }
+                    else if(OrderType() == OP_SELL)
+                    {
+                        sellPL += OrderProfit();
+                    }
+                }
+            }
+        }
+        
+        // Format the profit/loss strings with + or - sign and 2 decimal places
+        string buyPLText = "Buy P/L: ";
+        if(buyPL > 0)
+            buyPLText += "+" + DoubleToString(buyPL, 2);
+        else
+            buyPLText += DoubleToString(buyPL, 2);
+            
+        string sellPLText = "Sell P/L: ";
+        if(sellPL > 0)
+            sellPLText += "+" + DoubleToString(sellPL, 2);
+        else
+            sellPLText += DoubleToString(sellPL, 2);
+        
+        // Update the labels
+        if(ObjectFind(0, g_BuyPLLabel) >= 0)
+        {
+            ObjectSetString(0, g_BuyPLLabel, OBJPROP_TEXT, buyPLText);
+            // Set color based on profit/loss
+            ObjectSetInteger(0, g_BuyPLLabel, OBJPROP_COLOR, buyPL >= 0 ? clrLime : clrRed);
+        }
+        
+        if(ObjectFind(0, g_SellPLLabel) >= 0)
+        {
+            ObjectSetString(0, g_SellPLLabel, OBJPROP_TEXT, sellPLText);
+            // Set color based on profit/loss
+            ObjectSetInteger(0, g_SellPLLabel, OBJPROP_COLOR, sellPL >= 0 ? clrLime : clrRed);
+        }
     }
