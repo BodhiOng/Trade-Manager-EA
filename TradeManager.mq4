@@ -43,25 +43,29 @@ string g_ShowButton = "TM_ShowButton";
 string g_BuyPLLabel = "TM_BuyPLLabel";
 string g_SellPLLabel = "TM_SellPLLabel";
 
-// Input parameters
-input string EA_Settings = "===== EA Settings ====="; // EA Settings
-input int Panel_Corner = 0; // Panel Corner
-input int Panel_X = 10; // Panel X Position
-input int Panel_Y = 20; // Panel Y Position
-input color Panel_Color = clrWhite; // Panel Color
-input color Button_Color = clrDodgerBlue; // Button Color
-input color Text_Color = clrBlack; // Text Color
-input int Button_Width = 80; // Button Width
-input int Button_Height = 20; // Button Height
-input int Field_Width = 60; // Field Width
-input int Field_Height = 20; // Field Height
-input int Label_Width = 60; // Label Width
-input int Label_Height = 20; // Label Height
+int Panel_Corner = 0; // Panel Corner
+int Panel_X = 10; // Panel X Position
+int Panel_Y = 20; // Panel Y Position
+color Panel_Color = clrWhite; // Panel Color
+color Button_Color = clrDodgerBlue; // Button Color
+color Text_Color = clrBlack; // Text Color
+int Button_Width = 80; // Button Width
+int Button_Height = 20; // Button Height
+int Field_Width = 60; // Field Width
+int Field_Height = 20; // Field Height
+int Label_Width = 60; // Label Width
+int Label_Height = 20; // Label Height
 
 // Risk Management Settings
-input string Risk_Settings = "===== Risk Management ====="; // Risk Management Settings
-input double Max_Loss = 200.00; // Max Loss Threshold (account balance)
-input string Cooling_Down_Duration = "15:00"; // Cooling Down Duration (MM:SS)
+input double Max_Loss = 0.00; // Max Loss Threshold (account balance)
+// Cooling Down Duration options
+enum ENUM_COOLING_DOWN_DURATION {
+   MINUTES_15 = 15,  // 15 minutes
+   MINUTES_30 = 30,  // 30 minutes
+   MINUTES_45 = 45,  // 45 minutes
+   MINUTES_60 = 60   // 60 minutes
+};
+input ENUM_COOLING_DOWN_DURATION Cooling_Down_Duration = MINUTES_15; // Cooling Down Duration
 
 // Global variables
 double g_LotSize = 0.01;
@@ -112,9 +116,10 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
               g_LotSizes[3], ", ",
               g_LotSizes[4]);
               
-        // Parse cooling down duration from input parameter
-        ParseCoolingDownDuration(Cooling_Down_Duration);
-        Print("Cooling down duration set to: ", g_CoolingDownMinutes, " minutes and ", g_CoolingDownSeconds, " seconds");
+        // Set cooling down duration from input parameter
+        g_CoolingDownMinutes = Cooling_Down_Duration;
+        g_CoolingDownSeconds = 0;
+        Print("Cooling down duration set to: ", g_CoolingDownMinutes, " minutes");
         
         // Enable chart events for button clicks and other interactions
         ChartSetInteger(0, CHART_EVENT_MOUSE_MOVE, true);     // Enable chart events
@@ -131,34 +136,6 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         return(INIT_SUCCEEDED);
     }
     
-//+------------------------------------------------------------------+
-//| Parse cooling down duration from MM:SS format                      |
-//+------------------------------------------------------------------+
-    void ParseCoolingDownDuration(string durationStr)
-    {
-        // Default values in case parsing fails
-        g_CoolingDownMinutes = 15;
-        g_CoolingDownSeconds = 0;
-        
-        // Check if the string has the correct format
-        if(StringLen(durationStr) >= 3 && StringFind(durationStr, ":") > 0)
-        {
-            // Split the string by colon
-            string parts[];
-            StringSplit(durationStr, ':', parts);
-            
-            if(ArraySize(parts) >= 2)
-            {
-                g_CoolingDownMinutes = (int)StringToInteger(parts[0]);
-                g_CoolingDownSeconds = (int)StringToInteger(parts[1]);
-                
-                // Validate values
-                if(g_CoolingDownMinutes < 0) g_CoolingDownMinutes = 0;
-                if(g_CoolingDownSeconds < 0) g_CoolingDownSeconds = 0;
-                if(g_CoolingDownSeconds > 59) g_CoolingDownSeconds = 59;
-            }
-        }
-    }
 
 //+------------------------------------------------------------------+
 //| Expert deinitialization function                                 |
@@ -309,7 +286,7 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         // Set the cooling down end time if not already set
         if(g_CoolingDownEndTime == 0)
         {
-            g_CoolingDownEndTime = TimeCurrent() + g_CoolingDownMinutes * 60 + g_CoolingDownSeconds;
+            g_CoolingDownEndTime = TimeCurrent() + g_CoolingDownMinutes * 60; // Convert minutes to seconds
             
             // Initialize display values
             g_DisplayedMinutes = g_CoolingDownMinutes;
