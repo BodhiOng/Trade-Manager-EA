@@ -58,6 +58,11 @@ input int Field_Height = 20; // Field Height
 input int Label_Width = 60; // Label Width
 input int Label_Height = 20; // Label Height
 
+// Risk Management Settings
+input string Risk_Settings = "===== Risk Management ====="; // Risk Management Settings
+input double Max_Loss = 200.00; // Max Loss Threshold (account balance)
+input string Cooling_Down_Duration = "15:00"; // Cooling Down Duration (MM:SS)
+
 // Global variables
 double g_LotSize = 0.01;
 double g_CombinedSL = 0.0;
@@ -65,6 +70,20 @@ double g_NoTrailZone = 0.0;
 double g_TrailingStop = 0.0;
 double g_CombinedTP = 0.0;
 bool g_IsPanelHidden = false; // Track if panel is hidden or visible
+
+// Max loss and cooling down variables
+bool g_MaxLossTriggered = false;   // Whether max loss has been triggered
+datetime g_CoolingDownEndTime = 0; // When the cooling down period ends
+int g_CoolingDownMinutes = 15;     // Default cooling down minutes
+int g_CoolingDownSeconds = 0;      // Default cooling down seconds
+string g_MaxLossOverlayName = "TM_MaxLossOverlay";
+string g_MaxLossMessageName = "TM_MaxLossMessage";
+string g_MaxLossCountdownName = "TM_MaxLossCountdown";
+
+// Timer variables for smooth countdown
+datetime g_LastSecondUpdate = 0;   // Last time the second was updated
+int g_DisplayedSeconds = 0;        // Currently displayed seconds
+int g_DisplayedMinutes = 0;        // Currently displayed minutes
 
 // Arrays to store multiple lot sizes
 double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
@@ -93,12 +112,17 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
               g_LotSizes[3], ", ",
               g_LotSizes[4]);
               
-        // Default lot sizes are already set in the global array declaration
-        // g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1}
+        // Parse cooling down duration from input parameter
+        ParseCoolingDownDuration(Cooling_Down_Duration);
+        Print("Cooling down duration set to: ", g_CoolingDownMinutes, " minutes and ", g_CoolingDownSeconds, " seconds");
         
         // Enable chart events for button clicks and other interactions
         ChartSetInteger(0, CHART_EVENT_MOUSE_MOVE, true);     // Enable chart events
         ChartSetInteger(0, CHART_EVENT_OBJECT_CREATE, true);  // Enable object creation events
+        
+        // Set up a 1-second timer for smooth countdown
+        EventSetTimer(1); // 1-second timer
+        Print("1-second timer set for smooth countdown");
         
         Print("Trade Manager EA initialized - chart events enabled");
         
@@ -106,14 +130,113 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         CreateTradePanel();
         return(INIT_SUCCEEDED);
     }
+    
+//+------------------------------------------------------------------+
+//| Parse cooling down duration from MM:SS format                      |
+//+------------------------------------------------------------------+
+    void ParseCoolingDownDuration(string durationStr)
+    {
+        // Default values in case parsing fails
+        g_CoolingDownMinutes = 15;
+        g_CoolingDownSeconds = 0;
+        
+        // Check if the string has the correct format
+        if(StringLen(durationStr) >= 3 && StringFind(durationStr, ":") > 0)
+        {
+            // Split the string by colon
+            string parts[];
+            StringSplit(durationStr, ':', parts);
+            
+            if(ArraySize(parts) >= 2)
+            {
+                g_CoolingDownMinutes = (int)StringToInteger(parts[0]);
+                g_CoolingDownSeconds = (int)StringToInteger(parts[1]);
+                
+                // Validate values
+                if(g_CoolingDownMinutes < 0) g_CoolingDownMinutes = 0;
+                if(g_CoolingDownSeconds < 0) g_CoolingDownSeconds = 0;
+                if(g_CoolingDownSeconds > 59) g_CoolingDownSeconds = 59;
+            }
+        }
+    }
 
 //+------------------------------------------------------------------+
 //| Expert deinitialization function                                 |
 //+------------------------------------------------------------------+
     void OnDeinit(const int reason)
     {
-   // Remove UI elements
+        // Kill the timer
+        EventKillTimer();
+        Print("Timer killed");
+        
+        // Remove UI elements
         ObjectsDeleteAll(0, "TM_");
+        
+        // Explicitly remove max loss overlay objects to ensure they're gone
+        ObjectDelete(0, g_MaxLossOverlayName);
+        ObjectDelete(0, g_MaxLossMessageName);
+        ObjectDelete(0, g_MaxLossCountdownName);
+    }
+    
+//+------------------------------------------------------------------+
+//| Timer event function                                              |
+//+------------------------------------------------------------------+
+    void OnTimer()
+    {
+        // Only process timer events if max loss is triggered
+        if(g_MaxLossTriggered)
+        {
+            // Get current time
+            datetime currentTime = TimeCurrent();
+            
+            // Calculate remaining time
+            int remainingSeconds = (int)(g_CoolingDownEndTime - currentTime);
+            
+            // Ensure we don't show negative time
+            if(remainingSeconds < 0) remainingSeconds = 0;
+            
+            // Calculate minutes and seconds for display
+            g_DisplayedMinutes = remainingSeconds / 60;
+            g_DisplayedSeconds = remainingSeconds % 60;
+            
+            // Format the countdown text
+            string countdownText = StringFormat("%02d:%02d", g_DisplayedMinutes, g_DisplayedSeconds);
+            
+            // Update the countdown text
+            if(ObjectFind(0, g_MaxLossCountdownName) >= 0)
+            {
+                ObjectSetString(0, g_MaxLossCountdownName, OBJPROP_TEXT, countdownText);
+            }
+            
+            // Debug output every 5 seconds
+            static datetime lastDebugTime = 0;
+            if(currentTime - lastDebugTime >= 5)
+            {
+                Print("[TIMER] Countdown: ", countdownText, 
+                      ", Remaining seconds: ", remainingSeconds,
+                      ", Current time: ", TimeToString(currentTime, TIME_DATE|TIME_SECONDS), 
+                      ", End time: ", TimeToString(g_CoolingDownEndTime, TIME_DATE|TIME_SECONDS));
+                lastDebugTime = currentTime;
+            }
+            
+            // Check if cooling down period has ended
+            if(remainingSeconds <= 0)
+            {
+                // Cooling down period is over, allow trading again
+                g_MaxLossTriggered = false;
+                g_CoolingDownEndTime = 0;
+                
+                // Remove overlay objects
+                ObjectDelete(0, g_MaxLossOverlayName);
+                ObjectDelete(0, g_MaxLossMessageName);
+                ObjectDelete(0, g_MaxLossCountdownName);
+                
+                Print("Cooling down period ended. Trading enabled again.");
+            }
+            
+            // Force chart redraw to ensure smooth countdown display
+            ChartRedraw(0);
+        }
     }
 
 //+------------------------------------------------------------------+
@@ -146,6 +269,118 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
     void CloseSellButton() { ProcessButtonAction("TM_CS"); }
 
 //+------------------------------------------------------------------+
+//| Check if max loss has been triggered                              |
+//+------------------------------------------------------------------+
+    bool CheckMaxLossCondition()
+    {
+        // Get current account balance
+        double currentBalance = AccountBalance();
+        static double previousBalance = currentBalance;
+        static bool wasAboveThreshold = (currentBalance >= Max_Loss);
+        bool result = false;
+        
+        // Only trigger max loss if balance drops below threshold from above threshold
+        // or if this is the first check and balance is already below threshold
+        if(currentBalance < Max_Loss)
+        {
+            if(wasAboveThreshold || previousBalance == 0)
+            {
+                result = true;
+                wasAboveThreshold = false;
+            }
+        }
+        else
+        {
+            // Balance is above threshold, reset the flag
+            wasAboveThreshold = true;
+        }
+        
+        // Store current balance for next check
+        previousBalance = currentBalance;
+        
+        return result;
+    }
+
+//+------------------------------------------------------------------+
+//| Create blue screen overlay with countdown message                  |
+//+------------------------------------------------------------------+
+    void ShowMaxLossOverlay()
+    {
+        // Set the cooling down end time if not already set
+        if(g_CoolingDownEndTime == 0)
+        {
+            g_CoolingDownEndTime = TimeCurrent() + g_CoolingDownMinutes * 60 + g_CoolingDownSeconds;
+            
+            // Initialize display values
+            g_DisplayedMinutes = g_CoolingDownMinutes;
+            g_DisplayedSeconds = g_CoolingDownSeconds;
+            
+            Print("Cooling down period set to end at: ", TimeToString(g_CoolingDownEndTime, TIME_DATE|TIME_SECONDS));
+            Print("Initial countdown: ", g_DisplayedMinutes, ":", g_DisplayedSeconds);
+        }
+        
+        // Initial countdown text - will be updated by OnTimer
+        string countdownText = StringFormat("%02d:%02d", g_DisplayedMinutes, g_DisplayedSeconds);
+        
+        // Create or update overlay rectangle covering the entire chart
+        if(ObjectFind(0, g_MaxLossOverlayName) < 0)
+        {
+            ObjectCreate(0, g_MaxLossOverlayName, OBJ_RECTANGLE_LABEL, 0, 0, 0);
+            ObjectSetInteger(0, g_MaxLossOverlayName, OBJPROP_XDISTANCE, 0);
+            ObjectSetInteger(0, g_MaxLossOverlayName, OBJPROP_YDISTANCE, 0);
+            ObjectSetInteger(0, g_MaxLossOverlayName, OBJPROP_XSIZE, ChartGetInteger(0, CHART_WIDTH_IN_PIXELS));
+            ObjectSetInteger(0, g_MaxLossOverlayName, OBJPROP_YSIZE, ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS));
+            ObjectSetInteger(0, g_MaxLossOverlayName, OBJPROP_BGCOLOR, clrBlue);
+            ObjectSetInteger(0, g_MaxLossOverlayName, OBJPROP_BORDER_TYPE, BORDER_FLAT);
+            ObjectSetInteger(0, g_MaxLossOverlayName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+            ObjectSetInteger(0, g_MaxLossOverlayName, OBJPROP_STYLE, STYLE_SOLID);
+            ObjectSetInteger(0, g_MaxLossOverlayName, OBJPROP_WIDTH, 1);
+            ObjectSetInteger(0, g_MaxLossOverlayName, OBJPROP_BACK, false);
+            ObjectSetInteger(0, g_MaxLossOverlayName, OBJPROP_SELECTABLE, false);
+            ObjectSetInteger(0, g_MaxLossOverlayName, OBJPROP_SELECTED, false);
+            ObjectSetInteger(0, g_MaxLossOverlayName, OBJPROP_HIDDEN, false);
+            ObjectSetInteger(0, g_MaxLossOverlayName, OBJPROP_ZORDER, 1000); // Top layer
+        }
+        else
+        {
+            // Update size in case chart was resized
+            ObjectSetInteger(0, g_MaxLossOverlayName, OBJPROP_XSIZE, ChartGetInteger(0, CHART_WIDTH_IN_PIXELS));
+            ObjectSetInteger(0, g_MaxLossOverlayName, OBJPROP_YSIZE, ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS));
+        }
+        
+        // Create or update message text
+        if(ObjectFind(0, g_MaxLossMessageName) < 0)
+        {
+            ObjectCreate(0, g_MaxLossMessageName, OBJ_LABEL, 0, 0, 0);
+            ObjectSetInteger(0, g_MaxLossMessageName, OBJPROP_XDISTANCE, 50);
+            ObjectSetInteger(0, g_MaxLossMessageName, OBJPROP_YDISTANCE, ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS) / 2 - 30);
+            ObjectSetInteger(0, g_MaxLossMessageName, OBJPROP_COLOR, clrWhite);
+            ObjectSetString(0, g_MaxLossMessageName, OBJPROP_FONT, "Arial Bold");
+            ObjectSetInteger(0, g_MaxLossMessageName, OBJPROP_FONTSIZE, 16);
+            ObjectSetInteger(0, g_MaxLossMessageName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+            ObjectSetString(0, g_MaxLossMessageName, OBJPROP_TEXT, "Max loss had been triggered. Cooling down for");
+        }
+        
+        // Create or update countdown text
+        if(ObjectFind(0, g_MaxLossCountdownName) < 0)
+        {
+            ObjectCreate(0, g_MaxLossCountdownName, OBJ_LABEL, 0, 0, 0);
+            ObjectSetInteger(0, g_MaxLossCountdownName, OBJPROP_XDISTANCE, 50);
+            ObjectSetInteger(0, g_MaxLossCountdownName, OBJPROP_YDISTANCE, ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS) / 2);
+            ObjectSetInteger(0, g_MaxLossCountdownName, OBJPROP_COLOR, clrWhite);
+            ObjectSetString(0, g_MaxLossCountdownName, OBJPROP_FONT, "Arial Bold");
+            ObjectSetInteger(0, g_MaxLossCountdownName, OBJPROP_FONTSIZE, 24);
+            ObjectSetInteger(0, g_MaxLossCountdownName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+        }
+        
+        // Update countdown text
+        ObjectSetString(0, g_MaxLossCountdownName, OBJPROP_TEXT, countdownText);
+        
+        // Force chart redraw
+        ChartRedraw(0);
+    }
+
+//+------------------------------------------------------------------+
 //| Expert tick function                                             |
 //+------------------------------------------------------------------+
     void OnTick()
@@ -153,6 +388,25 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         // Check if CA, CB, CS buttons exist and are clickable
         static int tickCount = 0;
         static double lastCombinedSL = 0;
+        
+        // Check for max loss condition
+        if(g_MaxLossTriggered)
+        {
+            // Skip normal processing while in cooling down period
+            // The OnTimer function will handle the countdown and overlay updates
+            return;
+        }
+        else if(CheckMaxLossCondition())
+        {
+            // Max loss just triggered
+            g_MaxLossTriggered = true;
+            g_CoolingDownEndTime = 0; // Reset so it will be set in ShowMaxLossOverlay
+            ShowMaxLossOverlay();
+            Print("Max loss triggered at balance: ", AccountBalance(), ", threshold: ", Max_Loss);
+            return; // Skip normal processing
+        }
+        
+        // Normal processing continues if max loss not triggered
         
         // Check combined stop loss, combined take profit and trailing stop on every tick
         ManageCombinedStopLoss();
@@ -222,6 +476,12 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         Print("Chart event: ID=", id, ", object=", sparam);
         
         // No keyboard shortcuts - removed due to MQL4 limitations
+        
+        // Block all button interactions during cooling down period
+        if(g_MaxLossTriggered) {
+            Print("All interactions disabled during cooling down period");
+            return;
+        }
         
         // Handle button clicks - this is the main event we care about
         if(id == CHARTEVENT_OBJECT_CLICK) {
@@ -1158,7 +1418,7 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         // If g_CombinedSL is 0.0, there's no stop loss to check, so return
         if(g_CombinedSL == 0.0) return;
 
-    // For buy orders
+        // For buy orders
         bool hasBuyOrders = false;
         for(int i = 0; i < OrdersTotal(); i++)
         {
@@ -1177,7 +1437,7 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
             }
         }
 
-    // For sell orders
+        // For sell orders
         bool hasSellOrders = false;
         for(int i = 0; i < OrdersTotal(); i++)
         {
@@ -1221,6 +1481,10 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
                 
             // Skip the show button
             if(objName == g_ShowButton)
+                continue;
+                
+            // Skip max loss overlay objects
+            if(objName == g_MaxLossOverlayName || objName == g_MaxLossMessageName || objName == g_MaxLossCountdownName)
                 continue;
             
             // Process Trade Manager objects (starting with TM_)
@@ -1286,6 +1550,11 @@ double g_LotSizes[5] = {0.02, 0.04, 0.06, 0.08, 0.1};
         // The simplest solution is to recreate the entire panel
         // This ensures all elements are properly visible
         CreateTradePanel();
+        
+        // If max loss is triggered, make sure the overlay is still visible
+        if(g_MaxLossTriggered) {
+            ShowMaxLossOverlay();
+        }
         
         Print("Recreated trade panel to ensure all elements are visible");
         
